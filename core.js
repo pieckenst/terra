@@ -24,7 +24,7 @@ bot.on("messageCreate", async message => {
       color: 7894174,
       timestamp: "2021-05-08T15:42:58.309Z",
       footer: {
-         text: "Hello there"
+         text: "Internal javascript bot testing - made with eris framework by Middlle#7488"
        },
       fields: [
        {
