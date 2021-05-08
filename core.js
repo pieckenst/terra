@@ -12,7 +12,7 @@ bot.on("messageCreate", async message => {
  if (message.author.bot || !message.channel.guild) return;
  if (!message.content.startsWith(prefix)) return;
  
- if (!message.content.startsWith(`${prefix}test`)) {
+ if (!message.content.startsWith('${prefix}test')) {
 	return message.channel.createMessage("Im online!"); 
  } 
 });
