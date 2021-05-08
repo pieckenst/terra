@@ -5,15 +5,19 @@ let bot = new Eris(process.env.TOKEN);
 let prefix = "cryst.";
 
 bot.on("ready", () => {
- console.log("[CRYSTARIUM] Bot started and ready") 
+ console.log("[CRYSTARIUM] Bot started and ready")
+});
+
+bot.once("ready", async () => {
+  await bot.editStatus({ name: `CRYSTARIUM ALPHA TEST - Framework: Eris , Language : JS`});
 });
 
 bot.on("messageCreate", async message => {
  if (message.author.bot || !message.channel.guild) return;
  if (!message.content.startsWith(prefix)) return;
- 
+
  if (!message.content.startsWith('${prefix}test')) {
-	
+
     let embed = {
       title: "This is online btw",
       description: "Eris embeds ",
@@ -41,11 +45,11 @@ bot.on("messageCreate", async message => {
         value: "inline text two",
         inline: true
        }
-	  ] 
+	  ]
     };
- 
+
  return message.channel.createMessage({embed :embed});
- } 
+ }
 });
 
 bot.connect();
