@@ -35,7 +35,7 @@ class testcommand extends Firework.Command {
        }
 	   ]
        };
-       await message.channel.createMessage({embed :embed});
+       message.channel.createMessage({embed :embed});
 	}
 }
 
