@@ -1,18 +1,20 @@
 const Firework = require("@luvella/firework");  // firework thing
 
 class testcommand extends Firework.Command {
-	const test = new Firework.Command(bot, {
-     name: 'test'
-    }).executor(function ({message}) {	 
-	 let embed = {
-      title: "Crystarium",
-      description: "Eris embeds testing in discord bot",
-      color: 7894174,
-      timestamp: "2021-05-08T15:42:58.309Z",
-      footer: {
+	constructor(bot) {
+		super(bot, {name: 'hello'});
+	}
+
+	run({message}) {
+	  let embed = {
+       title: "Crystarium",
+       description: "Eris embeds testing in discord bot",
+       color: 7894174,
+       timestamp: "2021-05-08T15:42:58.309Z",
+       footer: {
          text: "Internal javascript bot testing - made with eris framework by Middlle#7488"
        },
-      fields: [
+       fields: [
        {
         name: "Watch the progress on github",
         value: "https://github.com/pieckenst/crystarium"
@@ -31,11 +33,10 @@ class testcommand extends Firework.Command {
         value: "inline text two",
         inline: true
        }
-	 ]
-     };
-     return message.channel.createMessage({embed :embed});
+	   ]
+       };
+       message.channel.createMessage({embed :embed});
 	}
-	bot.addCommand(test);
 }
 
 module.exports = testcommand;	
