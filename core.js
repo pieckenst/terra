@@ -19,8 +19,8 @@ bot.on("messageCreate", async message => {
  if (!message.content.startsWith('${prefix}test')) {
 
     let embed = {
-      title: "This is online btw",
-      description: "Eris embeds ",
+      title: "Crystarium",
+      description: "Eris embeds testing in discord bot",
       color: 7894174,
       timestamp: "2021-05-08T15:42:58.309Z",
       footer: {
@@ -28,12 +28,12 @@ bot.on("messageCreate", async message => {
        },
       fields: [
        {
-        name: "Test 1",
-        value: "embed text 1"
+        name: "Watch the progress on github",
+        value: "https://github.com/pieckenst/crystarium"
        },
        {
-        name: "test 2",
-        value: "embed text 2"
+        name: "Otherwise this command is simply embed testing",
+        value: "embed text "
        },
        {
         name: "Inline 1",
