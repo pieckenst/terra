@@ -14,19 +14,44 @@ bot.once("ready", async () => {
   await bot.editStatus({ name: `CRYSTARIUM ALPHA TEST - Framework: Eris , Language : JS`});
 });
 
-bot.loadCommands('./commands')
-
 bot.on("messageCreate", async message => {
+ if (message.author.bot || !message.channel.guild) return;
+ if (!message.content.startsWith(prefix)) return;
 
-	if (!message.content.startsWith(prefix)) return;
+ if (!message.content.startsWith('${prefix}test')) {
 
-	const args = message.content.slice(prefix.length).trim().split(' ');
-	const command = args.shift().toLowerCase();
+    let embed = {
+      title: "Crystarium",
+      description: "Eris embeds testing in discord bot",
+      color: 7894174,
+      timestamp: "2021-05-08T15:42:58.309Z",
+      footer: {
+         text: "Internal javascript bot testing - made with eris framework by Middlle#7488"
+       },
+      fields: [
+       {
+        name: "Watch the progress on github",
+        value: "https://github.com/pieckenst/crystarium"
+       },
+       {
+        name: "Otherwise this command is simply embed testing",
+        value: "embed text "
+       },
+       {
+        name: "Inline 1",
+        value: "inline text one",
+        inline: true
+       },
+       {
+        name: "Inline 2",
+        value: "inline text two",
+        inline: true
+       }
+	  ]
+    };
 
-	const cmd = bot.getCommand(command); // works with the name and aliases as well
-	if (!cmd) return;
-
-	cmd.run({message});
+ return message.channel.createMessage({embed :embed});
+ }
 });
 
 bot.connect();
