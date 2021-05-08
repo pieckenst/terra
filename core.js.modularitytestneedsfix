@@ -1,3 +1,5 @@
+// THIS CODE IS AN ATEMPT AT USING LUVELLA FIREWORK TO SPLIT COMMANDS INTO MODULE FILES - BROKEN 
+
 //const Eris = require("eris") // eris depend
 const Firework = require("@luvella/firework");  // firework thing
 require('dotenv').config();
