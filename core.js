@@ -13,7 +13,38 @@ bot.on("messageCreate", async message => {
  if (!message.content.startsWith(prefix)) return;
  
  if (!message.content.startsWith('${prefix}test')) {
-	return message.channel.createMessage("Im online!"); 
+	
+    let embed = {
+      title: "This is online btw",
+      description: "Eris embeds ",
+      color: 7894174,
+      timestamp: "2021-05-08T15:42:58.309Z",
+      footer: {
+         text: "Hello there"
+       },
+      fields: [
+       {
+        name: "Test 1",
+        value: "embed text 1"
+       },
+       {
+        name: "test 2",
+        value: "embed text 2"
+       },
+       {
+        name: "Inline 1",
+        value: "inline text one",
+        inline: true
+       },
+       {
+        name: "Inline 2",
+        value: "inline text two",
+        inline: true
+       }
+	  ] 
+    };
+ 
+ return message.channel.createMessage({embed :embed});
  } 
 });
 
