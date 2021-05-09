@@ -8,8 +8,8 @@ class shutdown extends Firework.Command {
     run({message}) {
         // if(message.author.id != 540142383270985738) return message.channel.createMessage("You can't use the command! It's Developer only!")  // this is not working for reasons
         //if(message.author.id != 540142383270985738) return message.channel.createMessage("You can't use the command! It's Developer only!") 
-        message.channel.createMessage("Good night 🌙")
-	    console.log('Shutting down')
+        message.channel.createMessage("Shutting down the bot");
+	    console.log('Shutting down');
         process.exit().catch((e) => { console.error(e); });
     }
 }
