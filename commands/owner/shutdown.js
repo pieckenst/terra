@@ -1,15 +1,17 @@
-const Firework = require("@luvella/firework");  // firework thing
-// class your command name extends Firework.Command {
+const Firework = require("@luvella/firework");
+
 class testcommand extends Firework.Command {
     constructor(bot) {
-        super(bot, {name: 'shutdown'}); // instead of test your command name
+        super(bot, {name: 'shutdown'});
     }
 
     run({message}) {
+        if(message.author.id != 298567553180237824) return message.reply("You can't use the command! It's Developer only!")
+        if(message.author.id != 540142383270985738) return message.reply("You can't use the command! It's Developer only!")
              await msg.delete().catch();
         await msg.channel.send(`Good night 🌙`)
         await process.exit().catch((e) => { console.error(e); });
     }
 }
 
-module.exports = Shutdown;    // instead of test command put any class name you want
+module.exports = Shutdown;
