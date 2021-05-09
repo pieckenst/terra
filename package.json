@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@luvella/firework": "^1.1.2",
+    "pm2": "^4.5.6"
+  }
+}
