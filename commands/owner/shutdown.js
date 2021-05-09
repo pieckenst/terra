@@ -6,8 +6,10 @@ class testcommand extends Firework.Command {
     }
 
     run({message}) {
-      
+             await msg.delete().catch();
+        await msg.channel.send(`Good night 🌙`)
+        await process.exit().catch((e) => { console.error(e); });
     }
 }
 
-module.exports = shutdown;    // instead of test command put any class name you want
+module.exports = Shutdown;    // instead of test command put any class name you want
