@@ -1,10 +1,10 @@
 // const Eris = require("eris") // eris depend
 const Firework = require("@luvella/firework"); // firework thing
 require("dotenv").config();
-let token = process.env.token;
+const token = process.env.token;
 // let bot = new Eris(token); // eris client
 const bot = new Firework.Client(token); // firework client thing
-let prefix = "cryst.";
+const prefix = "cryst.";
 
 bot.on("ready", () => {
   console.log("[CRYSTARIUM] Bot started and ready");
