@@ -5,10 +5,7 @@ class playcommand extends Firework.Command {
     super(bot, { name: "play" });
   }
 
-  run({ message }) {
-    
-  }
+  run({ message }) {}
 }
 
 module.exports = playcommand;
-
