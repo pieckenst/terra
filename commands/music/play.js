@@ -1,8 +1,8 @@
 const Firework = require("@luvella/firework"); // firework thing
 
-class testcommand extends Firework.Command {
+class playcommand extends Firework.Command {
   constructor(bot) {
-    super(bot, { name: "test" });
+    super(bot, { name: "play" });
   }
 
   run({ message }) {
@@ -10,5 +10,5 @@ class testcommand extends Firework.Command {
   }
 }
 
-module.exports = testcommand;
+module.exports = playcommand;
 
