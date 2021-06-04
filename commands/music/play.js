@@ -5,10 +5,7 @@ class testcommand extends Firework.Command {
     super(bot, { name: "test" });
   }
 
-  run({ message }) {
-    
-  }
+  run({ message }) {}
 }
 
 module.exports = testcommand;
-
