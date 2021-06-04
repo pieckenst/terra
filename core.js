@@ -1,32 +1,33 @@
-//const Eris = require("eris") // eris depend
-const Firework = require("@luvella/firework");  // firework thing
-require('dotenv').config();
+// const Eris = require("eris") // eris depend
+const Firework = require("@luvella/firework"); // firework thing
+require("dotenv").config();
 var token = process.env.token;
-//let bot = new Eris(token); // eris client
+// let bot = new Eris(token); // eris client
 let bot = new Firework.Client(token); // firework client thing
 let prefix = "cryst.";
 
 bot.on("ready", () => {
- console.log("[CRYSTARIUM] Bot started and ready")
+  console.log("[CRYSTARIUM] Bot started and ready");
 });
 
 bot.once("ready", async () => {
-  await bot.editStatus({ name: `CRYSTARIUM ALPHA TEST - Framework: Eris , Language : JS`});
+  await bot.editStatus({
+    name: "CRYSTARIUM ALPHA TEST - Framework: Eris , Language : JS",
+  });
 });
 
-bot.loadCommands('./commands')
+bot.loadCommands("./commands");
 
-bot.on("messageCreate", async message => {
+bot.on("messageCreate", async (message) => {
+  if (!message.content.startsWith(prefix)) return;
 
-	if (!message.content.startsWith(prefix)) return;
+  const args = message.content.slice(prefix.length).trim().split(" ");
+  const command = args.shift().toLowerCase();
 
-	const args = message.content.slice(prefix.length).trim().split(' ');
-	const command = args.shift().toLowerCase();
+  const cmd = bot.getCommand(command); // works with the name and aliases as well
+  if (!cmd) return;
 
-	const cmd = bot.getCommand(command); // works with the name and aliases as well
-	if (!cmd) return;
-
-	cmd.run({message});
+  cmd.run({ message });
 });
 
 bot.connect();

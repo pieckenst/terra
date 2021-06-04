@@ -1,0 +1,39 @@
+version = 1
+
+[[analyzers]]
+name = "javascript"
+enabled = true
+
+  [analyzers.meta]
+  plugins = [
+    "meteor",
+    "react",
+    "vue",
+    "ember",
+    "angular",
+    "angularjs"
+  ]
+
+[[transformers]]
+name = "standardjs"
+enabled = true
+
+[[transformers]]
+name = "google-java-format"
+enabled = true
+
+[[transformers]]
+name = "autopep8"
+enabled = true
+
+[[transformers]]
+name = "isort"
+enabled = true
+
+[[transformers]]
+name = "prettier"
+enabled = true
+
+[[transformers]]
+name = "gofmt"
+enabled = true
