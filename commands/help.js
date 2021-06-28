@@ -1,31 +1,29 @@
-const { MessageEmbed } = require("discord.js");
+const { MessageEmbed } = require('discord.js')
 config = require("../config.json");
 
 module.exports = {
-  name: "help",
-  category: "general",
-  description: "Help command - self explanatory",
+    name: 'help',
+    category: 'general',
+    description: 'Help command - self explanatory',
 
-  async execute(message, args) {
-    const commands = message.client.commands.array();
+    async execute(message, args) {
+        let commands = message.client.commands.array();
 
-    const helpEmbed = new MessageEmbed()
-      .setTitle("Crystarium: Help")
-      .setDescription("Bot commands are listed below")
-      .setColor("#F8AA2A");
+        let helpEmbed = new MessageEmbed()
+          .setTitle("Crystarium: Help")
+          .setDescription("Bot commands are listed below")
+          .setColor("#F8AA2A");
 
-    commands.forEach((cmd) => {
-      helpEmbed.addField(
-        `**${config.prefix}${cmd.name} ${
-          cmd.aliases ? `(${cmd.aliases})` : ""
-        }**`,
-        `${cmd.description}`,
-        true
-      );
-    });
+        commands.forEach((cmd) => {
+         helpEmbed.addField(
+           `**${config.prefix}${cmd.name} ${cmd.aliases ? `(${cmd.aliases})` : ""}**`,
+           `${cmd.description}`,
+           true
+         );
+        });
 
-    helpEmbed.setTimestamp();
+        helpEmbed.setTimestamp();
 
-    return message.channel.send(helpEmbed).catch(console.error);
-  },
-};
+        return message.channel.send(helpEmbed).catch(console.error);
+        }
+    }
