@@ -2,7 +2,7 @@ const fs = require("fs");
 const Discord = require("discord.js");
 const { prefix } = require("./config.json");
 require("dotenv").config();
-const token = process.env.token;
+var token = process.env.token;
 const disbut = require("discord-buttons");
 
 const client = new Discord.Client({ intents: Discord.Intents.NON_PRIVILEGED });
