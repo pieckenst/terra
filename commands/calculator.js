@@ -76,7 +76,7 @@ module.exports = {
                 description: "```Exiting calculator on request ```",
                 color: 14187389,
                 footer: {
-                  text: "Crystarium",
+                  text: "Terra",
                 },
               };
               msg.edit({
