@@ -7,7 +7,7 @@ module.exports = {
       description: "```test```",
       color: 7338060,
       footer: {
-        text: "Crystarium - Based on discord.js now instead of eris",
+        text: "Terra - Based on discord.js now instead of eris",
       },
     };
     message.channel.send({ embed });
