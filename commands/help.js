@@ -10,7 +10,7 @@ module.exports = {
     const commands = message.client.commands.array();
 
     const helpEmbed = new MessageEmbed()
-      .setTitle("Crystarium: Help")
+      .setTitle("Terra: Help")
       .setDescription("Bot commands are listed below")
       .setColor("#F8AA2A");
 
