@@ -8,7 +8,7 @@ module.exports = {
   aliases: [""],
   usage: "<ID>",
   permissions: ["BAN_MEMBERS"],
-  async execute(message, args) {
+  async execute(client, message, args) {
     const userID = args[0];
 
     if (!userID) {
