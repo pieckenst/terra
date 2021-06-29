@@ -9,7 +9,7 @@ module.exports = {
   usage: "<@user/ID> [reason]",
   permissions: ["BAN_MEMBERS"],
 
-  async execute(message, args) {
+  async execute(client, message, args) {
     const banmember =
       message.mentions.members.first() ||
       message.guild.members.cache.get(args[0]);
