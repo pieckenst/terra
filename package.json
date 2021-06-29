@@ -8,5 +8,11 @@
     "fs": "^0.0.1-security",
     "dotenv": "^10.0.0",
     "discord-buttons": "^3.2.1"
-  }
+  },
+  "scripts": {
+    "test": "c.help",
+    "start": "node ."
+  },
+  "author": "pieckenst",
+  "license": "EPL"
 }
