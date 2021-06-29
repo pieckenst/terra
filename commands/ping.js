@@ -3,7 +3,7 @@ module.exports = {
     description: 'Preforms a ping test on discord',
     execute(client ,message, args){
         var ping = require('ping');
-        const servers = [""us-east2.discord.gg", "us-west0.discord.gg", "us-central3.discord.gg", "russia4.discord.gg", "southafrica231.discord.gg", "hongkong13.discord.gg", "sydney49.discord.gg"];
+        const servers = ["us-east2.discord.gg", "us-west0.discord.gg", "us-central3.discord.gg", "russia4.discord.gg", "southafrica231.discord.gg", "hongkong13.discord.gg", "sydney49.discord.gg"];
         const area = ["southUS", "westUS", "usCentral", "EU", "Africa", "Japan/Asia", "Aus"];
         var responses = [];
 
