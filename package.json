@@ -10,7 +10,7 @@
     "discord-buttons": "^3.2.1"
   },
   "scripts": {
-    "test": "c.help",
+    "test": "echo \n The build complete d so you are fine",
     "start": "node ."
   },
   "author": "pieckenst",
