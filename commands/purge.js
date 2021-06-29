@@ -8,7 +8,7 @@ module.exports = {
   aliases: [""],
   usage: "<#messages>",
   permissions: ["MANAGE_MESSAGES"],
-  async execute(message, args) {
+  async execute(client, message, args) {
     const amount = parseInt(args[0]);
 
     if (isNaN(amount) || !amount || amount < 0) {
