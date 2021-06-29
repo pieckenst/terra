@@ -6,7 +6,7 @@ module.exports = {
   category: "general",
   description: "Help command - self explanatory",
 
-  async execute(message, args) {
+  async execute(client, message, args) {
     const commands = message.client.commands.array();
 
     const helpEmbed = new MessageEmbed()
