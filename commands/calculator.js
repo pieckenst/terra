@@ -5,7 +5,7 @@ const math = require("mathjs");
 module.exports = {
   name: "calculator",
   description: "Bring up a calculator using Buttons!",
-  async execute(message, args) {
+  async execute(client, message, args) {
     const button = new Array([], [], [], [], []);
     const row = [];
     const text = [
