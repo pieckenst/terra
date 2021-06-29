@@ -3,7 +3,7 @@ module.exports = {
   name: "kick",
   category: "moderation",
   description: "This will kick a user of your choice from the server",
-  async execute(message, args) {
+  async execute(client, message, args) {
     const kickmember =
       message.mentions.members.first() ||
       message.guild.members.cache.get(args[0]);
