@@ -10,6 +10,9 @@
     "discord-buttons": "^3.2.1",
     "mathjs": "^9.4.3"
   },
+  "engines": {
+    "node": "14.x"
+  },
   "scripts": {
     "test": "echo \"The build complete d so you are fine\" && node .",
     "start": "node ."
