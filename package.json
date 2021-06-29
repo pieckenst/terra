@@ -7,7 +7,8 @@
     "discord.js": "^12.3.1",
     "fs": "^0.0.1-security",
     "dotenv": "^10.0.0",
-    "discord-buttons": "^3.2.1"
+    "discord-buttons": "^3.2.1",
+    "mathjs": "^9.4.3"
   },
   "scripts": {
     "test": "echo \"The build complete d so you are fine\" && node .",
