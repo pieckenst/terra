@@ -12,5 +12,5 @@ module.exports = {
 
     await message.channel.send(new Discord.MessageEmbed().setTitle("Bot Is Shutting Down...").setColor("GREEN").setTimestamp().setFooter(message.guild.me.displayName));
     process.exit();
-  },
+  }
 };
