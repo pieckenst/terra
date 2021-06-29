@@ -14,7 +14,7 @@ module.exports = {
     await client.user.setPresence({
      status: "online",
      activity: {
-      name: "Restarting for ya :)",
+      name: "❤️ for ya :) | Reboot or shutdown incoming - wait a bit ",
       type: "WATCHING",
      },
     });
