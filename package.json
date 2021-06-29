@@ -15,7 +15,7 @@
   },
   "scripts": {
     "test": "echo \"The build complete d so you are fine\" && node .",
-    "start": "npm install && node ."
+    "start": "node ."
   },
   "author": "pieckenst",
   "license": "EPL"
