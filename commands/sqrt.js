@@ -7,7 +7,7 @@ module.exports = {
             const embederrormath = {
               "title": "Oops!",
                "description": "```An error occurred while executing the command```",
-               "color": 9555352,
+               "color": 0xff0000,
                "fields": [
                  {
                    "name": "Invalid Value",

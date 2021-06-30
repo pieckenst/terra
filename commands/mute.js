@@ -9,7 +9,7 @@ module.exports = {
     aliases: ["tmute"],
     usage: '<@user/ID> <time> [reason]',
     permissions: ["MANAGE_ROLES"],
-    async run(client, message, args){
+    async execute(client, message, args) {
         const mutemember = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
         let muteReason = args.slice(2).join(' ');
         if(!muteReason) muteReason = "Not Specified."

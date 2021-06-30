@@ -4,9 +4,12 @@
   "version": "0.3.5",
   "main": "core.js",
   "dependencies": {
+    "canvas": "^2.8.0",
     "discord-buttons": "^3.2.1",
     "discord.js": "^12.3.1",
     "dotenv": "^10.0.0",
+    "erela.js": "^2.3.3",
+    "erela.js-spotify": "^1.2.0",
     "fs": "^0.0.1-security",
     "mathjs": "^9.4.3",
     "ms": "^2.1.3",
