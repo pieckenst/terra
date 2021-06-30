@@ -1,6 +1,10 @@
 const fs = require("fs");
 const Discord = require("discord.js");
+
+const { Manager } = require("erela.js");
+const Spotify  = require("erela.js-spotify");
 const { prefix } = require("./config.json");
+const config = require('./config.json');
 require("dotenv").config();
 var token = process.env.token;
 const disbut = require("discord-buttons");
@@ -8,6 +12,8 @@ const disbut = require("discord-buttons");
 const client = new Discord.Client({ intents: Discord.Intents.All });
 client.commands = new Discord.Collection();
 client.cooldowns = new Discord.Collection();
+const clientID = config.clientID; 
+const clientSecret = config.clientSecret;
 disbut(client);
 
 const commandFiles = fs
@@ -22,7 +28,67 @@ for (const file of commandFiles) {
   console.log(`[UPSTART] Loaded ${file} `);
 }
 
+client.manager = new Manager({
+	plugins: [
+		
+		new Spotify({
+		  clientID,
+		  clientSecret
+		})
+	  ],
+  nodes: [{
+    host: config.host,
+	port: config.port,
+	password: config.password,
+    retryDelay: 5000,
+  }],
+  autoPlay: true,
+  send: (id, payload) => {
+    const guild = client.guilds.cache.get(id);
+    if (guild) guild.shard.send(payload);
+  }
+})
+  .on("nodeConnect", node => console.log(`Node "${node.options.identifier}" has connected.`))
+  .on("nodeError", (node, error) => console.log(
+    `Node "${node.options.identifier}" encountered an error: ${error.message}.`
+  ))
+  .on("trackStart", (player, track) => {
+    const channel = client.channels.cache.get(player.textChannel);
+    const embed = new Discord.MessageEmbed()
+    .setColor('RANDOM')
+    .setAuthor(` | NOW PLAYING`, client.user.displayAvatarURL({
+      dynamic: true
+    }))
+    .setDescription(`[${track.title}](${track.uri})`)
+    .addField(`Requested By : `,`${track.requester}` , true)
+  
+    channel.send(embed);
+  })
+  .on("trackStuck", (player, track) => {
+    const channel = client.channels.cache.get(player.textChannel);
+    const embed = new Discord.MessageEmbed()
+    .setColor('RANDOM')
+    .setAuthor(`Track Stuck:`, client.user.displayAvatarURL({
+      dynamic: true
+    }))
+    .setDescription(`${track.title}`)
+   
+    channel.send(embed);
+  })
+  .on("queueEnd", player => {
+    const channel = client.channels.cache.get(player.textChannel);
+    const embed2 = new Discord.MessageEmbed()
+    .setColor('RANDOM')
+    .setAuthor(`Queue has ended`, client.user.displayAvatarURL({
+      dynamic: true
+    }))
+ 
+    channel.send(embed2);
+    player.destroy();
+  });
+
 client.once("ready", () => {
+  client.manager.init(client.user.id);
   console.log(
     `[UPSTART] Started the bot || Service logged in as ${client.user.tag} `
   );
@@ -35,6 +101,8 @@ client.once("ready", () => {
   });
   console.log("[UPSTART] Status setup complete");
 });
+
+client.on("raw", d => client.manager.updateVoiceState(d));
 
 client.on('message', message => {
 	if (!message.content.startsWith(prefix) || message.author.bot) return;
