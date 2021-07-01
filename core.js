@@ -62,7 +62,7 @@ client.manager = new Manager({
     .setDescription(`[${track.title}](${track.uri})`)
     .addField(`Requested By : `,`${track.requester}` , true)
   
-    return channel.send(embed);
+    return channel.reply(embed);
   })
   .on("trackStuck", (player, track) => {
     const channel = client.channels.cache.get(player.textChannel);
@@ -73,7 +73,7 @@ client.manager = new Manager({
     }))
     .setDescription(`${track.title}`)
    
-    return channel.send(embed);
+    return channel.reply(embed);
   })
   .on("queueEnd", player => {
     const channel = client.channels.cache.get(player.textChannel);
@@ -83,7 +83,7 @@ client.manager = new Manager({
       dynamic: true
     }))
  
-    channel.send(embed2);
+    channel.reply(embed2);
     player.destroy();
   });
 
