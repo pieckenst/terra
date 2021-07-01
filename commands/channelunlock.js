@@ -27,7 +27,7 @@ module.exports = {
               .setColor("GREEN")
               .setTitle("The channel has been unlocked")
               .setDescription(
-                `**Unlocked by:** \`\`\n**Moderator:** ${message.member}`
+                `**Unlocked by:** \`\`\**** ${message.member}`
               );
         return message.channel.send(unlocked);
     }
