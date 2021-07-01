@@ -62,7 +62,7 @@ module.exports = {
           .setTimestamp()
 
           if (!player.playing && !player.paused && player.queue.totalSize === res.tracks.length) player.play();
-          return message.channel.send(playlist);
+          return message.channel.reply(playlist);
         case 'SEARCH_RESULT':
           let max = 5, collected, filter = (m) => m.author.id === message.author.id && /^(\d+|end)$/i.test(m.content);
           if (res.tracks.length < max) max = res.tracks.length;
@@ -81,7 +81,7 @@ module.exports = {
                 .addField('Cancel Search: ','Type end or any other number to cancel the search',true)
                 .setTimestamp()
 
-          message.channel.send(searchResult);
+          message.channel.reply(searchResult);
   
           try {
             collected = await message.channel.awaitMessages(filter, { max: 1, time: 30e3, errors: ['time'] });
@@ -112,7 +112,7 @@ module.exports = {
           .addField(`Requested By : `,`${track.requester}` , true)
    
           if (!player.playing && !player.paused && !player.queue.size) player.play();
-          return message.channel.send(trackadd);
+          return message.channel.reply(trackadd);
 
       }
     },
