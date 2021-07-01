@@ -122,7 +122,18 @@ client.on('message', message => {
 	if (command.permissions) {
 		const authorPerms = message.channel.permissionsFor(message.author);
 		if (!authorPerms || !authorPerms.has(command.permissions)) {
-			return message.reply('You can not do this!');
+			const embederrorp = {
+              "title": "Oops!",
+              "description": "```You cannot execute this command!```",
+              "color": 0xff0000,
+              "fields": [
+                {
+                  "name": "You require this permission ",
+                  "value": `\`\`\`fix\n${command.permissions}\n\`\`\``
+                }
+              ]
+            };
+		    message.reply({ embed:embederrorp });
 		}
 	}
 
