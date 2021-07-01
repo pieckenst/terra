@@ -8,7 +8,7 @@ module.exports = {
     const kickmember =
       message.mentions.members.first() ||
       message.guild.members.cache.get(args[0]);
-    let kickReason = args.slice(1).join(" ");
+    let kickReason = args.join(" ").slice(23);
     if (!kickReason) kickReason = "Not Specified.";
 
     if (!kickmember) {
