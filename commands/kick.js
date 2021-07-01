@@ -41,7 +41,6 @@ module.exports = {
         .setColor("RED")
         .setDescription("**I cannot kick a moderator or administrator**");
       return message.channel.send(err);
-	  break;
 	}
 
     if (
