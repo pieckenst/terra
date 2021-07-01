@@ -22,7 +22,12 @@ module.exports = {
         } catch (e) {
             console.log(e);
         }
-
-        message.channel.send(`Done | Channel Locked!`);
+        const locked = new MessageEmbed()
+              .setColor("GREEN")
+              .setTitle("The channel has been locked")
+              .setDescription(
+                `**Locked by:** \`\`\n**Moderator:** ${message.member}`
+              );
+        return message.channel.send(locked);
     }
 }

@@ -23,6 +23,12 @@ module.exports = {
             console.log(e);
         }
 
-        message.channel.send(`Done | Channel Unlocked!`);
+        const unlocked = new MessageEmbed()
+              .setColor("GREEN")
+              .setTitle("The channel has been unlocked")
+              .setDescription(
+                `**Unlocked by:** \`\`\n**Moderator:** ${message.member}`
+              );
+        return message.channel.send(unlocked);
     }
 }
