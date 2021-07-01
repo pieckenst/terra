@@ -26,7 +26,7 @@ module.exports = {
               .setColor("GREEN")
               .setTitle("The channel has been locked")
               .setDescription(
-                `**Locked by:** \`\`\**** ${message.member}`
+                `**Locked by:\`\`\** ${message.member}**`
               );
         return message.channel.send(locked);
     }
