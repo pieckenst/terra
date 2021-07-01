@@ -35,15 +35,8 @@ module.exports = {
       return message.channel.send(err);
     }
 	
-	if (kickmember.hasPermission('MANAGE_GUILD')) {
-		const err = new MessageEmbed()
-        .setColor("RED")
-        .setDescription("**I cannot kick a moderator or administrator**");
-      return message.channel.send(err);
-	  break;
-	}
 	
-	if (kickmember.hasPermission('MANAGE_ROLES ')) {
+	if (kickmember.hasPermission('MANAGE_ROLES ') || kickmember.hasPermission('MANAGE_GUILD') ) {
 		const err = new MessageEmbed()
         .setColor("RED")
         .setDescription("**I cannot kick a moderator or administrator**");
