@@ -133,7 +133,7 @@ client.on('message', message => {
                 }
               ]
             };
-		    message.reply({ embed:embederrorp });
+		    return message.reply({ embed:embederrorp });
 		}
 	}
 
@@ -184,7 +184,7 @@ client.on('message', message => {
                 }
               ]
             };
-		message.reply({ embed:embederror });
+		return message.reply({ embed:embederror });
 	}
 });
 
