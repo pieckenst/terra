@@ -34,6 +34,20 @@ module.exports = {
         .setDescription("**That person can't be kicked!**");
       return message.channel.send(err);
     }
+	
+	if (kickmember.hasPermission('MANAGE_GUILD')) {
+		const err = new MessageEmbed()
+        .setColor("RED")
+        .setDescription("**I cannot kick a moderator or administrator**");
+      return message.channel.send(err);
+	}
+	
+	if (kickmember.hasPermission('MANAGE_ROLES ')) {
+		const err = new MessageEmbed()
+        .setColor("RED")
+        .setDescription("**I cannot kick a moderator or administrator**");
+      return message.channel.send(err);
+	}
 
     if (
       message.guild.me.roles.highest.comparePositionTo(
