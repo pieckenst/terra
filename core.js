@@ -118,6 +118,21 @@ client.on('message', message => {
 	if (command.guildOnly && message.channel.type === 'dm') {
 		return message.reply('I can\'t execute that command inside DMs!');
 	}
+	
+	if (msg.content === prefix) {
+		const embederrorpref = {
+              "title": "Oops!",
+              "description": "```There is a problem here```",
+              "color": 0xff0000,
+              "fields": [
+                {
+                  "name": "You message is just the bot prefix",
+                  "value": "```Please pass down a command```"
+                }
+              ]
+            };
+		return message.reply({ embed:embederrorpref });
+	}
 
 	if (command.permissions) {
 		const authorPerms = message.channel.permissionsFor(message.author);
