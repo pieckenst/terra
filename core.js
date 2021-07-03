@@ -119,7 +119,7 @@ client.on('message', message => {
 		return message.reply('I can\'t execute that command inside DMs!');
 	}
 	
-	if (msg.content === prefix) {
+	if (message.content === prefix) {
 		const embederrorpref = {
               "title": "Oops!",
               "description": "```There is a problem here```",
