@@ -21,6 +21,7 @@ module.exports = {
            },
         });
         
+		return await message.channel.send(new Discord.MessageEmbed().setTitle("Requested status has been set").setColor("GREEN").setFooter(message.guild.me.displayName).setTimestamp())
 		
 	}
   }
