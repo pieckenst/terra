@@ -83,7 +83,7 @@ client.manager = new Manager({
       dynamic: true
     }))
  
-    channel.reply(embed2);
+    channel.send(embed2);
     player.destroy();
   });
 
