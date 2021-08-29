@@ -1,5 +1,6 @@
 const fs = require("fs");
 const Discord = require("discord.js");
+const keepAlive = require('./server');
 
 const { Manager } = require("erela.js");
 const Spotify  = require("erela.js-spotify");
@@ -207,4 +208,5 @@ client.on('message', message => {
 
 client.on("clickButton", async (button) => {});
 
+keepAlive();
 client.login(token);
