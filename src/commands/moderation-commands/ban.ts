@@ -60,7 +60,8 @@ function sendErrorEmbed(harmonix: Harmonix, message: Message, errorMessage: stri
 }
 
 function canBanMember(moderator: Member, targetMember: Member) {
-  return moderator.permissions.has("banMembers");}
+  return moderator.permissions.has("banMembers");} // should error when the role does not have ban permission
+// one flaw is theoretically moderator can ban admin or other moderator- that has to get fixed
 
 async function sendBanDM(client: Harmonix['client'], banMember: Member, guild: GuildChannel['guild'], reason: string, moderator: Message['author']) {  const dmChannel = await client.getDMChannel(banMember.id);
   const embed = {
