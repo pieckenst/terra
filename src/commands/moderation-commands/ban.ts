@@ -1,3 +1,7 @@
+// this needs improvement in permission checks departments
+// currently busy with my university year 1 coursework so this got shelved for now
+// i might either way make the thing have some integration with
+// spacetimedb for proper database storage
 import { Message, Member, GuildChannel, TextableChannel } from 'eris';
 import { Harmonix } from '../../core';
 
