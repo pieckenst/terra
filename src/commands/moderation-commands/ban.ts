@@ -2,8 +2,8 @@
 // currently busy with my university year 1 coursework so this got shelved for now
 // i might either way make the thing have some integration with
 // spacetimedb for proper database storage
-import { Message, Member, GuildChannel, TextableChannel } from 'eris';
-import { Harmonix } from '../../core';
+import { Message, Member, GuildChannel, TextableChannel } from "eris";
+import { Harmonix } from "../../core";
 
 export default {
   name: "ban",
@@ -13,7 +13,11 @@ export default {
   usage: "<@user/ID> [reason]",
   execute: async (harmonix: Harmonix, msg: Message, args: string[]) => {
     if (!(msg.channel instanceof GuildChannel)) {
-      return sendErrorEmbed(harmonix, msg, "This command can only be used in a guild.");
+      return sendErrorEmbed(
+        harmonix,
+        msg,
+        "This command can only be used in a guild.",
+      );
     }
 
     const userId = msg.mentions[0]?.id || args[0];
@@ -31,7 +35,11 @@ export default {
     }
 
     if (!canBanMember(msg.member!, banMember)) {
-      return sendErrorEmbed(harmonix, msg, "You don't have permission to ban this user.");
+      return sendErrorEmbed(
+        harmonix,
+        msg,
+        "You don't have permission to ban this user.",
+      );
     }
 
     try {
@@ -40,48 +48,73 @@ export default {
       await sendBanConfirmation(harmonix, msg, banMember, banReason);
     } catch (error) {
       console.error("Ban error:", error);
-      return sendErrorEmbed(harmonix, msg, "An error occurred while trying to ban the user.");
+      return sendErrorEmbed(
+        harmonix,
+        msg,
+        "An error occurred while trying to ban the user.",
+      );
     }
   },
 };
 
-function sendMissingArgsEmbed(harmonix: Harmonix, message: Message, command: any) {
+function sendMissingArgsEmbed(
+  harmonix: Harmonix,
+  message: Message,
+  command: any,
+) {
   const embed = {
-    color: 0xFF0000,
+    color: 0xff0000,
     title: "Missing arguments",
     description: `**Command:** \`${command.name}\`\n**Description:** \`${command.description || "None"}\`\n**Aliases:** \`${command.aliases.join(", ") || "None"}\`\n**Usage:** \`${command.name} ${command.usage}\`\n**Permissions:** \`${command.permissions || "None"}\``,
-    timestamp: new Date()
+    timestamp: new Date(),
   };
   return harmonix.client.createMessage(message.channel.id, { embed });
 }
 
-function sendErrorEmbed(harmonix: Harmonix, message: Message, errorMessage: string) {
+function sendErrorEmbed(
+  harmonix: Harmonix,
+  message: Message,
+  errorMessage: string,
+) {
   const embed = {
-    color: 0xFF0000,
-    description: errorMessage
+    color: 0xff0000,
+    description: errorMessage,
   };
   return harmonix.client.createMessage(message.channel.id, { embed });
 }
 
 function canBanMember(moderator: Member, targetMember: Member) {
-  return moderator.permissions.has("banMembers");} // should error when the role does not have ban permission
+  return moderator.permissions.has("banMembers");
+} // should error when the role does not have ban permission
 // one flaw is theoretically moderator can ban admin or other moderator- that has to get fixed
 
-async function sendBanDM(client: Harmonix['client'], banMember: Member, guild: GuildChannel['guild'], reason: string, moderator: Message['author']) {  const dmChannel = await client.getDMChannel(banMember.id);
+async function sendBanDM(
+  client: Harmonix["client"],
+  banMember: Member,
+  guild: GuildChannel["guild"],
+  reason: string,
+  moderator: Message["author"],
+) {
+  const dmChannel = await client.getDMChannel(banMember.id);
   const embed = {
-    color: 0x0000FF,
+    color: 0x0000ff,
     title: "You have been banned!",
-    description: `**Server:** \`${guild.name}\`\n**Reason:** \`${reason}\`\n**Moderator:** \`${moderator.username}#${moderator.discriminator}\``
+    description: `**Server:** \`${guild.name}\`\n**Reason:** \`${reason}\`\n**Moderator:** \`${moderator.username}#${moderator.discriminator}\``,
   };
   return dmChannel.createMessage({ embed }).catch(() => {});
 }
 
-function sendBanConfirmation(harmonix: Harmonix, message: Message, banMember: Member, reason: string) {
+function sendBanConfirmation(
+  harmonix: Harmonix,
+  message: Message,
+  banMember: Member,
+  reason: string,
+) {
   const embed = {
-    color: 0x00FF00,
+    color: 0x00ff00,
     title: "Member Banned",
     description: `**Banned:** \`${banMember.username}#${banMember.discriminator}\`\n**Moderator:** ${message.author.mention}\n**Reason:** \`${reason}\``,
-    timestamp: new Date()
+    timestamp: new Date(),
   };
   return harmonix.client.createMessage(message.channel.id, { embed });
 }
