@@ -17,6 +17,6 @@
     "useDiscordJS": false,
     "disabledCommands": [],
     "betaCommands": [],
-    "useDatabase": "none"
+    "useDatabase": "prisma"
   }
 }

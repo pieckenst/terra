@@ -1,99 +1,76 @@
 'use client';
 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Server } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { ServerList } from '@/components/ui/serverlist';
-import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Users, Server, Bot, Activity } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { getStats } from '@/lib/bot-api';
+import type { BotStats } from '@/lib/bot-api';
 
-
-export default function ServerSelectionPage() {
-  const [servers, setServers] = useState([]);
-  const [newOffset, setNewOffset] = useState(0);
-  const [totalServers, setTotalServers] = useState(0);
-
-  const [featureFlags, setFeatureFlags] = useState<{
-    disabledCommands?: string[];
-    betaCommands?: string[];
-    useDatabase?: "sqlite" | "postgres" | "none";
-  }>({});
-  const [search, setSearch] = useState('');
-  const [offset, setOffset] = useState('0');
-
-  const [apiBaseUrl, setApiBaseUrl] = useState('');
+export default function DashboardHomePage() {
+  const [stats, setStats] = useState<BotStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    setApiBaseUrl(process.env.NEXT_PUBLIC_API_URL || `${window.location.protocol}//${window.location.hostname}:3001`);
+    const fetchStats = async () => {
+      setIsLoading(true);
+      const statsData = await getStats();
+      if (statsData) {
+        setStats(statsData);
+      }
+      setIsLoading(false);
+    };
+    fetchStats();
   }, []);
 
-  useEffect(() => {
-    if (apiBaseUrl) {
-      fetchServers();
-      fetchFeatureFlags();
-    }
-  }, [search, offset, apiBaseUrl]);
-
-  const fetchServers = async () => {
-    const apiUrl = new URL('/api/servers', apiBaseUrl);
-    apiUrl.searchParams.append('q', search);
-    apiUrl.searchParams.append('offset', offset);
-    
-    const response = await fetch(apiUrl.toString());
-    const data = await response.json();
-    setServers(data.servers);
-    setNewOffset(data.newOffset);
-    setTotalServers(data.totalServers);
-  };
-
-  const fetchFeatureFlags = async () => {
-    const featureFlagsUrl = new URL('/api/featureflags', apiBaseUrl);
-    const featureFlagsResponse = await fetch(featureFlagsUrl.toString());
-    const flags = await featureFlagsResponse.json();
-    setFeatureFlags(flags);
-  };
-
-  const handleServerSelect = (serverId: string) => {
-    console.log(`Selected server: ${serverId}`);
-  };
-
-  const handleRefresh = async () => {
-    console.log('Refreshing servers...');
-    await fetchServers();
-  };
+  if (isLoading) {
+    return (
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card><CardHeader><CardTitle className="text-sm font-medium">Total Servers</CardTitle></CardHeader><CardContent>...</CardContent></Card>
+        <Card><CardHeader><CardTitle className="text-sm font-medium">Total Members</CardTitle></CardHeader><CardContent>...</CardContent></Card>
+        <Card><CardHeader><CardTitle className="text-sm font-medium">Active Users</CardTitle></CardHeader><CardContent>...</CardContent></Card>
+        <Card><CardHeader><CardTitle className="text-sm font-medium">Total Commands</CardTitle></CardHeader><CardContent>...</CardContent></Card>
+      </div>
+    );
+  }
 
   return (
-    <div className="bg-background text-foreground dark:bg-background dark:text-foreground">
-      <Tabs defaultValue="all">
-        <div className="flex items-center">
-          <TabsList>
-            <TabsTrigger value="all">All Servers</TabsTrigger>
-            <TabsTrigger value="managed">Managed Servers</TabsTrigger>
-            <TabsTrigger value="unmanaged">Unmanaged Servers</TabsTrigger>
-          </TabsList>
-          <div className="ml-auto flex items-center gap-2">
-            <Button size="sm" variant="outline" className="h-8 gap-1" onClick={handleRefresh}>
-              <Server className="h-3.5 w-3.5" />
-              <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
-                Refresh Servers
-              </span>
-            </Button>
-          </div>
-        </div>
-        <TabsContent value="all">
-          <ServerList
-            servers={servers}
-            offset={Number(newOffset) ?? 0}
-            totalServers={totalServers}
-            onServerSelect={handleServerSelect}
-            onLoadMore={fetchServers}
-            featureFlags={{
-              disabledCommands: featureFlags.disabledCommands || [],
-              betaCommands: featureFlags.betaCommands || [],
-              useDatabase: featureFlags.useDatabase || "none"
-            }}
-          />
-        </TabsContent>
-      </Tabs>
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Total Servers</CardTitle>
+          <Server className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{stats?.totalServers.toLocaleString() ?? '...'}</div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Total Members</CardTitle>
+          <Users className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{stats?.totalMembers.toLocaleString() ?? '...'}</div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Active Users</CardTitle>
+          <Activity className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{stats?.activeUsers.toLocaleString() ?? '...'}</div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Total Commands</CardTitle>
+          <Bot className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{stats?.totalCommands.toLocaleString() ?? '...'}</div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

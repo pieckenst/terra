@@ -32,6 +32,8 @@ import {
 import type { Harmonix } from "../discordkit/types/harmonixtypes";
 import { ApplicationCommand } from "eris";
 import { logError } from "../discordkit/utils/centralloggingfactory";
+import { exec } from "child_process";
+import { prisma } from "./lib/db";
 import knex from "knex";
 import { setupServer as setupFastifyServer } from "./server";
 import {
@@ -165,6 +167,32 @@ const loadToken = Effect.gen(function* (_) {
 
 const initDatabase = Effect.gen(function* (_) {
   const config = yield* _(loadConfig);
+  if (config.featureFlags?.useDatabase === "prisma") {
+    consola.info(colors.yellow("Using Prisma for database operations."));
+    yield* _(
+      Effect.tryPromise({
+        try: () =>
+          new Promise<void>((resolve, reject) => {
+                        exec("npx prisma migrate dev --name init --skip-generate", (error, stdout, stderr) => {
+              if (error) {
+                consola.error(
+                  colors.red(`Error running prisma migrate: ${error.message}`),
+                );
+                return reject(error);
+              }
+              if (stderr) {
+                // Prisma migrate often logs to stderr for non-error info
+                consola.info(colors.yellow(`Prisma migrate info: ${stderr}`));
+              }
+              consola.success(colors.green(`Prisma migrate output: ${stdout}`));
+              resolve();
+            });
+          }),
+        catch: (e) => new Error(`Prisma migration failed: ${e}`),
+      }),
+    );
+    return null; // Return null to satisfy the type signature
+  }
   if (config.featureFlags?.useDatabase === "sqlite") {
     return knex({
       client: "sqlite3",

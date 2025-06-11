@@ -1,0 +1,49 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Guild {
+  id        String           @id
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  commands  CommandSetting[]
+}
+
+model CommandSetting {
+  id          Int      @id @default(autoincrement())
+  guildId     String
+  commandName String
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, commandName])
+}
+
+model User {
+  id        String   @id
+  isAdmin   Boolean  @default(false)
+  isBlocked Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AnalyticsEvent {
+  id          Int      @id @default(autoincrement())
+  eventName   String
+  userId      String
+  guildId     String?
+  commandName String?
+  createdAt   DateTime @default(now())
+}

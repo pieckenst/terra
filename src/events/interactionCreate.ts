@@ -5,6 +5,7 @@ import { Effect } from "effect";
 import { logError } from "../../discordkit/utils/centralloggingfactory";
 import { colors } from "consola/utils";
 import consola from "consola";
+import { prisma } from "../lib/db";
 
 export default class extends defineEvent({
   name: "interactionCreate",
@@ -21,6 +22,27 @@ export default class extends defineEvent({
                   interaction.data.name,
                 );
                 if (!command) return;
+
+                // Check if the command is disabled in the database
+                if (interaction.guildID) {
+                  const setting = await prisma.commandSetting.findUnique({
+                    where: {
+                      guildId_commandName: {
+                        guildId: interaction.guildID,
+                        commandName: command.name,
+                      },
+                    },
+                  });
+
+                  if (setting && !setting.enabled) {
+                    await interaction.createMessage({
+                      content:
+                        "This command is currently disabled on this server.",
+                      flags: 64, // Ephemeral
+                    });
+                    return; // Stop execution
+                  }
+                }
 
                 try {
                   await command.execute(

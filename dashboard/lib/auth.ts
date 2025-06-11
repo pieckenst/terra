@@ -1,16 +1,28 @@
 import NextAuth from 'next-auth';
-import GitHub from 'next-auth/providers/github';
 import DiscordProvider from 'next-auth/providers/discord';
+import { prisma } from './prisma';
 
-const authConfig = NextAuth({
+export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
-   
     DiscordProvider({
-      clientId: process.env.AUTH_DISCORD_CLIENT_ID as string,
-      clientSecret: process.env.AUTH_DISCORD_CLIENT_SECRET as string,
+      clientId: process.env.DISCORD_CLIENT_ID as string,
+      clientSecret: process.env.DISCORD_CLIENT_SECRET as string,
     }),
-  ]
+  ],
+  callbacks: {
+    async session({ session, token }) {
+      if (token.sub && session.user) {
+        session.user.id = token.sub;
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.sub },
+        });
+        session.user.isAdmin = dbUser?.isAdmin ?? false;
+      }
+      return session;
+    },
+    async jwt({ token }) {
+      return token;
+    },
+  },
+  secret: process.env.NEXTAUTH_SECRET,
 });
-
-export const { handlers = {}, signIn, signOut, auth } = authConfig;
-export const { GET, POST } = handlers as { GET: any; POST: any };

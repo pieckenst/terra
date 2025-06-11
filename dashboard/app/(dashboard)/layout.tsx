@@ -1,3 +1,5 @@
+import { Suspense } from 'react';
+import * as React from 'react';
 import Link from 'next/link';
 import {
   Home,
@@ -25,7 +27,8 @@ import {
   TooltipContent,
   TooltipTrigger
 } from '@/components/ui/tooltip';
-import { User } from './user';
+import { UserNav } from './UserNav';
+import { Skeleton } from '@/components/ui/skeleton';
 import { VercelLogo } from '@/components/icons';
 import Providers from './providers';
 import { NavItem } from './nav-item';
@@ -33,20 +36,18 @@ import { SearchInput } from './search';
 import { headers } from 'next/headers';
 import { ThemeProvider } from 'next-themes';
 import { ThemeSwitch } from '@/components/ui/themeswitch';
+import { Toaster } from '@/components/ui/sonner';
+import { auth } from '@/lib/auth';
+import { redirect } from 'next/navigation';
 
 export default async function DashboardLayout({
   children
 }: {
   children: React.ReactNode;
 }) {
-  const headersList = await headers();
-  let protocol;
-
-  try {
-    const awaitedHeaders = await headersList;
-    protocol = awaitedHeaders.get('x-forwarded-proto');
-  } catch (e) {
-    console.error('Error accessing headers:', e);
+  const session = await auth();
+  if (!session) {
+    return redirect('/login');
   }
 
   return (
@@ -57,9 +58,13 @@ export default async function DashboardLayout({
           <div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-14">
             <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
               <MobileNav />
-              <DashboardBreadcrumb />
-              <SearchInput />
-              <User />
+              <Suspense fallback={<Skeleton className="h-8 w-24 rounded-md" />}>
+                <DashboardBreadcrumb />
+              </Suspense>
+              <div className="relative ml-auto flex-1 md:grow-0">
+                <SearchInput />
+              </div>
+              <UserNav user={session.user} />
               <ThemeSwitch />
             </header>
             <main className="grid flex-1 items-start gap-2 p-4 sm:px-6 sm:py-0 md:gap-4 bg-background">
@@ -175,13 +180,23 @@ function MobileNav() {
             <LineChart className="h-5 w-5" />
             Analytics
           </Link>
+          <Link
+            href="/settings"
+            className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground"
+          >
+            <Settings className="h-5 w-5" />
+            Settings
+          </Link>
         </nav>
       </SheetContent>
     </Sheet>
   );
 }
 
-function DashboardBreadcrumb() {
+async function DashboardBreadcrumb() {
+  const path = (await headers()).get('next-url') || '';
+  const segments = path.split('/').filter(Boolean);
+
   return (
     <Breadcrumb className="hidden md:flex">
       <BreadcrumbList>
@@ -190,16 +205,24 @@ function DashboardBreadcrumb() {
             <Link href="/">Dashboard</Link>
           </BreadcrumbLink>
         </BreadcrumbItem>
-        <BreadcrumbSeparator />
-        <BreadcrumbItem>
-          <BreadcrumbLink asChild>
-            <Link href="/servers">Servers</Link>
-          </BreadcrumbLink>
-        </BreadcrumbItem>
-        <BreadcrumbSeparator />
-        <BreadcrumbItem>
-          <BreadcrumbPage>All Servers</BreadcrumbPage>
-        </BreadcrumbItem>
+        {segments.map((segment, index) => {
+          const href = `/${segments.slice(0, index + 1).join('/')}`;
+          const isLast = index === segments.length - 1;
+          return (
+            <React.Fragment key={href}>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                {isLast ? (
+                  <BreadcrumbPage className="capitalize">{segment}</BreadcrumbPage>
+                ) : (
+                  <BreadcrumbLink asChild>
+                    <Link href={href} className="capitalize">{segment}</Link>
+                  </BreadcrumbLink>
+                )}
+              </BreadcrumbItem>
+            </React.Fragment>
+          );
+        })}
       </BreadcrumbList>
     </Breadcrumb>
   );

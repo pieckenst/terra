@@ -41,7 +41,7 @@ export interface FeatureFlags {
   useDiscordJS?: boolean;
   disabledCommands: string[];
   betaCommands: string[];
-  useDatabase: "sqlite" | "postgres" | "none";
+  useDatabase: "sqlite" | "postgres" | "prisma" | "none";
 }
 
 export interface UniversalClient {

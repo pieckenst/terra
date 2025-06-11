@@ -12,6 +12,8 @@ import { Effect } from "effect";
 import { logError } from "../../discordkit/utils/centralloggingfactory";
 import { colors } from "consola/utils";
 import consola from "consola";
+import { prisma } from "../lib/db";
+import { logEvent } from "../lib/analytics";
 
 export default class extends defineEvent({
   name: "messageCreate",
@@ -23,43 +25,107 @@ export default class extends defineEvent({
   ) {
     return Effect.runPromise(
       Effect.tryPromise(async () => {
-        if (!msg.content.startsWith(harmonix.options.prefix)) {
-          if (msg.mentions.includes(harmonix.client.user)) {
-            consola.info(
-              colors.yellow(
-                ` Bot mentioned by ${msg.author.username} in ${msg.channel.id}`,
-              ),
-            );
-            const embed = createBotInfoEmbed(harmonix);
-            if (msg.channel.id) {
-              await harmonix.client.createMessage(msg.channel.id, { embed });
-            }
+        let content: string | undefined;
+        const prefix = harmonix.options.prefix;
+        const mentionRegex = new RegExp(`^<@!?${harmonix.client.user.id}>`);
+
+        if (msg.content.startsWith(prefix)) {
+          content = msg.content.slice(prefix.length);
+        } else {
+          const mentionMatch = msg.content.match(mentionRegex);
+          if (mentionMatch) {
+            content = msg.content.slice(mentionMatch[0].length);
           }
-          return;
         }
+
+        if (content === undefined) {
+          return; // Not a command for the bot
+        }
+
+        const textableChannelTypes = [0, 1, 3, 5]; // GuildText, DM, GroupDM, GuildAnnouncement
+        
+        // If the bot is mentioned but no command follows, show the info embed.
+        if (content.trim().length === 0 && msg.mentions.includes(harmonix.client.user)) {
+            consola.info(
+                colors.yellow(
+                ` Bot mentioned by ${msg.author.username} in ${msg.channel.id}`,
+                ),
+            );
+            const embed: EmbedOptions = {
+                title: "Harmonix",
+                description:
+                "A feature-rich, and a powerful Discord bot built with Eris, and Bun.",
+                color: 0x5865f2,
+                thumbnail: {
+                url: harmonix.client.user.avatarURL,
+                },
+                fields: [
+                {
+                    name: "Prefix",
+                    value: `\`${harmonix.options.prefix}\``,
+                    inline: true,
+                }
+                ],
+            };
+            if (
+                "type" in msg.channel &&
+                textableChannelTypes.includes(msg.channel.type)
+            ) {
+                await msg.channel.createMessage({ embeds: [embed] });
+            }
+            return;
+        }
+
         if (
           "type" in msg.channel &&
-          (msg.channel.type === 0 ||
-            msg.channel.type === 1 ||
-            msg.channel.type === 3 ||
-            msg.channel.type === 5)
+          textableChannelTypes.includes(msg.channel.type)
         ) {
-          const args = msg.content
-            .slice(harmonix.options.prefix.length)
-            .trim()
-            .split(/ +/);
+          const args = content.trim().split(/ +/);
           const commandName = args.shift()?.toLowerCase();
 
           if (!commandName) return;
 
-          const command = harmonix.commands.get(commandName);
+          const command = harmonix.commands.get(commandName) || harmonix.commands.find(cmd => cmd.aliases && cmd.aliases.includes(commandName));
           if (command && "execute" in command) {
+            consola.info(`[DEBUG] Command found: ${command.name}`);
+            // Check if the command is disabled in the database
+            if (msg.guildID) {
+              consola.info(`[DEBUG] Checking database for guild: ${msg.guildID}`);
+              const setting = await prisma.commandSetting.findUnique({
+                where: {
+                  guildId_commandName: {
+                    guildId: msg.guildID,
+                    commandName: command.name,
+                  },
+                },
+              });
+              consola.info(`[DEBUG] Database setting: ${JSON.stringify(setting)}`);
+
+              if (setting && !setting.enabled) {
+                await msg.channel.createMessage({
+                  content: "This command is currently disabled on this server.",
+                  messageReference: {
+                    messageID: msg.id,
+                  },
+                });
+                return; // Stop execution
+              }
+            } else {
+              consola.info(`[DEBUG] No guildID found, skipping database check.`);
+            }
             consola.info(
               colors.cyan(
                 `Command "${commandName}" used by ${msg.author.username} in ${msg.channel.id}`,
               ),
             );
             await command.execute(harmonix, msg, args);
+
+            // Log analytics event
+            logEvent('command_used', {
+              userId: msg.author.id,
+              guildId: msg.guildID,
+              commandName: command.name,
+            });
           } else {
             consola.warn(
               colors.yellow(
