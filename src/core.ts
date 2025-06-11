@@ -15,7 +15,10 @@ import { colors } from "consola/utils";
 import { watch } from "chokidar";
 import { debounce } from "perfect-debounce";
 import { globby } from "globby";
+import stringWidth from "string-width";
 import path from "path";
+import art from "ascii-art";
+import Table from "cli-table3";
 import { Manager } from "erela.js";
 import Spotify from "erela.js-spotify";
 import { Effect, Console, Data } from "effect";
@@ -27,7 +30,7 @@ import {
   HarmonixEvent,
 } from "../discordkit/types/harmonixtypes";
 import type { Harmonix } from "../discordkit/types/harmonixtypes";
-import { ApplicationCommandStructure } from "eris";
+import { ApplicationCommand } from "eris";
 import { logError } from "../discordkit/utils/centralloggingfactory";
 import knex from "knex";
 import { setupServer as setupFastifyServer } from "./server";
@@ -929,57 +932,52 @@ async function main() {
           Effect.tryPromise(() => initHarmonix()),
         );
 
-        // Display ASCII art and initialization message side by side
+         // Display ASCII art and initialization message side by side
         const fs = require("fs");
         const path = require("path");
+        
         const asciiArt = await Effect.runPromise(
           Effect.tryPromise(() =>
             fs.promises.readFile(path.join(__dirname, "ascii-art.txt"), "utf8"),
           ),
         );
 
-        const asciiLines = (asciiArt as string).split("\n");
-        const initMessage = " Initializing Terra...";
+         // --- NEW STRATEGY: RENDER SEPARATELY ---
 
-        const maxAsciiWidth = Math.max(
-          ...asciiLines.map((line) => line.length),
-        );
-        const padding = " ".repeat(10); // Space between ASCII art and text
+        // Helper function to center a block of text.
+        const centerBlock = (lines: string[]) => {
+          const terminalWidth = process.stdout.columns || 80;
+          return lines.map(line => {
+              const lineWidth = stringWidth(line);
+              const padding = Math.floor((terminalWidth - lineWidth) / 2);
+              return " ".repeat(padding > 0 ? padding : 0) + line;
+          });
+      };
 
-        // Create large font version of initMessage
-        const largeFont = [
+      // 1. Prepare the logo block.
+      const logoLines = asciiArt.split("\n");
+      const centeredLogo = centerBlock(logoLines).join('\n');
+
+      // 2. Prepare the text block.
+      const textLines = [
           "┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐",
           "│ I │ │ N │ │ I │ │ T │ │ I │ │ A │ │ L │ │ I │ │ Z │ │ I │ │ N │ │ G │",
           "└───┘ └───┘ └───┘ └───┘ └───┘ └───┘ └───┘ └───┘ └───┘ └───┘ └───┘ └───┘",
-          "                ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐",
-          "                │ T │ │ E │ │ R │ │ R │ │ A │",
-          "                └───┘ └───┘ └───┘ └───┘ └───┘",
-        ];
+          "",
+          "┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐",
+          "│ T │ │ E │ │ R │ │ R │ │ A │",
+          "└───┘ └───┘ └───┘ └───┘ └───┘",
+      ];
+      const centeredText = centerBlock(textLines).join('\n');
+      
+      // 3. PRINT THE LOGO FIRST.
+      console.log(colors.blue(centeredLogo));
+      
+      // 4. PRINT A BLANK LINE FOR SPACING.
+      console.log('');
 
-        console.log("\n");
-        const terminalWidth = process.stdout.columns;
-        const largeMessageWidth = Math.max(
-          ...largeFont.map((line) => line.length),
-        );
-        const leftPadding = Math.floor(
-          (terminalWidth - maxAsciiWidth - largeMessageWidth - padding.length) /
-            2,
-        );
-
-        asciiLines.forEach((line, index) => {
-          const paddedLine = line.padEnd(maxAsciiWidth);
-          const largeFontLine = largeFont[index] || "";
-          console.log(
-            "\x1b[94m" +
-              " ".repeat(leftPadding) +
-              paddedLine +
-              "\x1b[0m" +
-              padding +
-              colors.blue(largeFontLine),
-          );
-        });
-
-        console.log("\n");
+      // 5. PRINT THE TEXT BLOCK AFTERWARD.
+      console.log(colors.blue(centeredText));
         if (harmonix.options.debug) {
           console.debug(`The bot is running in debug mode.`);
         }
