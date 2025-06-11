@@ -1,5 +1,5 @@
 {
-  "debug": true,
+  "debug": false,
   "ownerId": "540142383270985738",
   "prefix": "c.",
   "disabledCommandCategories": [],

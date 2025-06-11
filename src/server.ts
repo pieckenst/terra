@@ -118,9 +118,11 @@ export async function setupServer(harmonix: Harmonix) {
   });
 
   // Start the Next.js dashboard server
-  const nextProcess = spawn("npm", ["run", "dev"], {
+  const npmPath = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const nextProcess = spawn(npmPath, ["run", "dev"], {
     cwd: dashboardPath,
     stdio: "inherit",
+    shell: true
   });
   nextProcess.on("error", (err) => {
     console.error("Failed to start Next.js process:", err);

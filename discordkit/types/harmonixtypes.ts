@@ -1,8 +1,26 @@
-import Eris, { Message, TextableChannel, Collection } from "eris";
+import Eris, { 
+  Message, 
+  TextableChannel, 
+  Collection, 
+  Member, 
+  Role, 
+  User, 
+  Guild, 
+  GuildChannel, 
+  CommandInteraction, 
+  Constants, 
+  Permission, 
+  Client, 
+  InteractionDataOptions, 
+  InteractionDataOption, 
+  InteractionDataOptionWithValue, 
+  ComponentInteraction, 
+  ModalSubmitInteraction 
+} from "eris";
 import { Manager } from "erela.js";
 import { ApplicationCommandOptions } from "eris";
-import { Constants } from "eris";
 import { Knex } from "knex";
+import { Effect } from "effect";
 
 class ConfigError {
   readonly _tag = "ConfigError";
@@ -79,8 +97,78 @@ type CustomApplicationCommandOptions = Omit<
   ApplicationCommandOptions,
   "choices"
 > & {
+  cooldown?: Cooldown[] | undefined;
   choices?: { name: string; value: string | number }[] | undefined;
   required?: boolean;
+};
+
+/**
+ * Defines the permissions for a command.
+ */
+export type CommandPermissions = {
+  bot?: (keyof Constants["Permissions"])[];
+  user?: (keyof Constants["Permissions"])[];
+  roles?: {
+    needed?: string[];
+    denied?: string[];
+  };
+  channels?: {
+    needed?: string[];
+    denied?: string[];
+  };
+  custom?: (harmonix: Harmonix, context: Message | CommandInteraction) => boolean | Promise<boolean>;
+};
+
+/**
+ * Defines a cooldown for a command.
+ */
+export type Cooldown = {
+  seconds: number;
+  perUser?: boolean;
+};
+
+/**
+ * Represents a button component.
+ */
+export type Button = {
+  custom_id: string;
+  style: 1 | 2 | 3 | 4 | 5;
+  label?: string;
+  emoji?: { id?: string; name?: string; animated?: boolean };
+  disabled?: boolean;
+  execute: (harmonix: Harmonix, interaction: CommandInteraction) => Promise<void>;
+};
+
+/**
+ * Represents a select menu component.
+ */
+export type SelectMenu = {
+  custom_id: string;
+  options: { label: string; value: string; description?: string; emoji?: { id?: string; name?: string; animated?: boolean }; default?: boolean }[];
+  placeholder?: string;
+  min_values?: number;
+  max_values?: number;
+  disabled?: boolean;
+  execute: (harmonix: Harmonix, interaction: CommandInteraction) => Promise<void>;
+};
+
+/**
+ * Represents a modal component.
+ */
+export type Modal = {
+  custom_id: string;
+  title: string;
+  components: { type: 1; components: { type: 4; custom_id: string; label: string; style: 1 | 2; min_length?: number; max_length?: number; required?: boolean; value?: string; placeholder?: string }[] }[];
+  execute: (harmonix: Harmonix, interaction: CommandInteraction) => Promise<void>;
+};
+
+/**
+ * Represents a context menu command.
+ */
+export type ContextMenu = {
+  name: string;
+  type: 2 | 3; // 2 for user, 3 for message
+  execute: (harmonix: Harmonix, interaction: CommandInteraction) => Promise<void>;
 };
 
 type HarmonixCommand = {
@@ -89,18 +177,30 @@ type HarmonixCommand = {
   aliases?: string[];
   usage?: string;
   category?: string;
+  ownerOnly?: boolean;
   slashCommand?: boolean;
-  type?: 1;
+  type?: 1 | 2 | 3; // 1 for chat input, 2 for user, 3 for message
   options?: CustomApplicationCommandOptions[];
-  permissions?: string[];
-  intervalLimit?: { minute: number; hour: number; day: number };
+  permissions?: CommandPermissions;
+  cooldown?: Cooldown;
   beta?: boolean;
+  components?: {
+    buttons?: Button[];
+    selectMenus?: SelectMenu[];
+    modals?: Modal[];
+  };
   execute: (
     harmonix: Harmonix,
-    msg: Message<TextableChannel> | Eris.CommandInteraction,
+    context: Message<TextableChannel> | Eris.CommandInteraction,
     args: string[] | Record<string, any>,
   ) => Promise<void>;
+  onComponentInteraction?: (
+    harmonix: Harmonix,
+    interaction: Eris.ComponentInteraction | Eris.ModalSubmitInteraction,
+  ) => Promise<void>;
 };
+
+export type HarmonixCommandConfig = Omit<HarmonixCommand, "execute" | "onComponentInteraction">;
 
 type HarmonixEvent = {
   name: string;

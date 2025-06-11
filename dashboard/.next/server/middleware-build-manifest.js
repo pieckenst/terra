@@ -6,7 +6,6 @@ self.__BUILD_MANIFEST = {
   "ampDevFiles": [],
   "lowPriorityFiles": [],
   "rootMainFiles": [],
-  "rootMainFilesTree": {},
   "pages": {
     "/_app": []
   },

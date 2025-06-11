@@ -1,6 +1,6 @@
 import { defineEvent } from "../../discordkit/utils/event";
 import { Harmonix } from "../../discordkit/types/harmonixtypes";
-import { Interaction, CommandInteraction, ComponentInteraction } from "eris";
+import { Interaction, CommandInteraction, ComponentInteraction, ModalSubmitInteraction } from "eris";
 import { Effect } from "effect";
 import { logError } from "../../discordkit/utils/centralloggingfactory";
 import { colors } from "consola/utils";
@@ -38,24 +38,51 @@ export default class extends defineEvent({
                     flags: 64,
                   });
                 }
-              } else if (interaction instanceof ComponentInteraction) {
-                const command = harmonix.commands.find((cmd) =>
-                  interaction.data.custom_id.startsWith(cmd.name),
-                );
+              } else if (interaction instanceof ModalSubmitInteraction) {
+                const commandName = interaction.data.custom_id.split('_')[0];
+                const command = harmonix.slashCommands.get(commandName) || harmonix.commands.find(cmd => cmd.name === commandName);
                 if (!command) return;
 
-                try {
-                  await command.execute(harmonix, interaction, {});
-                } catch (error) {
-                  logError(
-                    `Error handling interaction for command ${command.name}:`,
-                    error,
-                  );
-                  await interaction.createMessage({
-                    content:
-                      "An error occurred while processing the interaction.",
-                    flags: 64,
-                  });
+                if (command.onComponentInteraction) {
+                  try {
+                    await command.onComponentInteraction(harmonix, interaction);
+                  } catch (error) {
+                    logError(
+                      `Error handling modal submission for command ${command.name}:`,
+                      error,
+                    );
+                  }
+                }
+              } else if (interaction instanceof ComponentInteraction) {
+                const commandName = interaction.data.custom_id.split('_')[0];
+                const command = harmonix.slashCommands.get(commandName) || harmonix.commands.find(cmd => cmd.name === commandName);
+                if (!command) return;
+
+                // Prefer the new component handler, but fall back to execute for older commands
+                if (command.onComponentInteraction) {
+                  try {
+                    await command.onComponentInteraction(harmonix, interaction);
+                  } catch (error) {
+                    logError(
+                      `Error handling component interaction for command ${command.name}:`,
+                      error,
+                    );
+                  }
+                } else {
+                  // Fallback for commands that don't have a dedicated component handler
+                  try {
+                    await command.execute(harmonix, interaction, {});
+                  } catch (error) {
+                    logError(
+                      `Error handling interaction for command ${command.name}:`,
+                      error,
+                    );
+                    await interaction.createMessage({
+                      content:
+                        "An error occurred while processing the interaction.",
+                      flags: 64,
+                    });
+                  }
                 }
               }
               resolve();

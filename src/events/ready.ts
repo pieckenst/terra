@@ -1,6 +1,11 @@
 import { defineEvent } from "../../discordkit/utils/event";
-import { Harmonix } from "../../discordkit/types/harmonixtypes";
-import { Interaction, CommandInteraction, ComponentInteraction } from "eris";
+import { Harmonix, HarmonixCommand } from "../../discordkit/types/harmonixtypes";
+import {
+  Interaction,
+  CommandInteraction,
+  ComponentInteraction,
+  ApplicationCommand,
+} from "eris";
 import { Effect } from "effect";
 import { logError } from "../../discordkit/utils/centralloggingfactory";
 import { colors } from "consola/utils";
@@ -28,12 +33,38 @@ export default class extends defineEvent({
 
       // Register slash commands
       consola.debug("Preparing slash commands for registration");
-      const commands = harmonix.slashCommands.map((cmd) => ({
-        name: cmd.name,
-        description: cmd.description,
-        options: cmd.options,
-        type: 1 as const, // ChatInput command type
-      }));
+      const commands = (
+        Array.from(harmonix.slashCommands.values()) as HarmonixCommand[]
+      ).flatMap((cmd) => {
+        const registrations: any[] = [];
+
+        // Ensure `types` is always an array
+        const types = Array.isArray(cmd.type)
+          ? cmd.type
+          : cmd.type
+          ? [cmd.type]
+          : [1];
+
+        if (types.includes(1)) {
+          registrations.push({
+            name: cmd.name,
+            description: cmd.description,
+            options: cmd.options,
+            type: 1 as const,
+          });
+        }
+
+        if (types.includes(2)) {
+          registrations.push({
+            name: cmd.name,
+            type: 2 as const, // User Context Menu
+          });
+        }
+
+        // Add other types here if needed, e.g., Message Context Menu (type 3)
+
+        return registrations;
+      });
 
       consola.debug(`Attempting to register ${commands.length} slash commands`);
       try {

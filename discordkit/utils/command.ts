@@ -1,31 +1,32 @@
 import { Effect } from "effect";
-import {
-  Harmonix,
-  HarmonixCommand,
-  HarmonixOptions,
+import { 
+  Harmonix, 
+  HarmonixCommand, 
+  HarmonixCommandConfig, 
+  HarmonixOptions, 
+  CustomApplicationCommandOptions, 
+  CommandPermissions, 
+  Cooldown, 
 } from "../types/harmonixtypes";
-import { Message, TextableChannel, Constants } from "eris";
+import Eris, {
+  Message,
+  TextableChannel,
+  Constants,
+  CommandInteraction,
+  GuildChannel,
+  ComponentInteraction,
+  ModalSubmitInteraction,
+} from "eris";
 import { logError } from "../utils/centralloggingfactory";
-import { ApplicationCommandOptions, CommandInteraction } from "eris";
-import { CustomApplicationCommandOptions } from "../types/harmonixtypes";
 
-export function defineCommand<
-  T extends Record<string, any> = Record<string, any>,
->(config: {
-  name: string;
-  description: string;
-  aliases?: string[];
-  usage?: string;
-  category?: string;
-  slashCommand?: boolean;
-  type?: 1;
-  options?: CustomApplicationCommandOptions[];
-  permissions?: string[];
-  ownerOnly?: boolean;
-  intervalLimit?: { minute: number; hour: number; day: number };
-  beta?: boolean;
-}) {
+const cooldowns = new Map<string, Map<string, number>>();
+
+export function defineCommand<T extends Record<string, any> = Record<string, any>>(
+  config: HarmonixCommandConfig,
+) {
   return class {
+    static config = config;
+
     static execute(
       harmonix: Harmonix,
       message: Message<TextableChannel> | CommandInteraction,
@@ -34,9 +35,15 @@ export function defineCommand<
       throw new Error("Execute method must be implemented");
     }
 
+    static onComponentInteraction?(
+      harmonix: Harmonix,
+      interaction: ComponentInteraction | ModalSubmitInteraction,
+    ): Promise<void>;
+
     static build(): HarmonixCommand {
       return {
         ...config,
+        onComponentInteraction: this.onComponentInteraction,
         execute: async (
           harmonix: Harmonix,
           message: Message<TextableChannel> | CommandInteraction,
@@ -48,31 +55,140 @@ export function defineCommand<
                 "author" in message
                   ? message.author.id
                   : message.member?.id || message.user?.id;
+              const member = message.member;
+              const channel = message.channel;
+
               if (harmonix.options.debug) {
                 console.log(`Debug: User ID for command execution: ${userId}`);
               }
 
+              // Owner check
               if (config.ownerOnly && userId !== harmonix.options.ownerId) {
                 throw new Error(
                   "This command can only be used by the bot owner.",
                 );
               }
 
-              if (config.permissions && "member" in message && message.member) {
-                const missingPermissions = config.permissions.filter(
-                  (perm) =>
-                    !message.member!.permissions.has(
-                      BigInt(
-                        Constants.Permissions[
-                          perm as keyof typeof Constants.Permissions
-                        ],
-                      ),
-                    ),
-                );
-                if (missingPermissions.length > 0) {
-                  throw new Error(
-                    `You're missing the following permissions: ${missingPermissions.join(", ")}`,
+              // Cooldown check
+              if (config.cooldown) {
+                if (!cooldowns.has(config.name)) {
+                  cooldowns.set(config.name, new Map());
+                }
+                const now = Date.now();
+                const timestamps = cooldowns.get(config.name)!;
+                const cooldownAmount = (config.cooldown.seconds || 3) * 1000;
+                const cooldownKey = config.cooldown.perUser ? userId : "global";
+
+                if (timestamps.has(cooldownKey)) {
+                  const expirationTime =
+                    timestamps.get(cooldownKey)! + cooldownAmount;
+                  if (now < expirationTime) {
+                    const timeLeft = (expirationTime - now) / 1000;
+                    throw new Error(
+                      `Please wait ${
+                        timeLeft.toFixed(1)
+                      } more second(s) before reusing the \`${
+                        config.name
+                      }\` command.`,
+                    );
+                  }
+                }
+                timestamps.set(cooldownKey, now);
+                setTimeout(() => timestamps.delete(cooldownKey), cooldownAmount);
+              }
+
+              // Permissions check (only in guilds)
+              if (config.permissions && member && channel.type !== 1) {
+                const perms = config.permissions;
+                const guild = (channel as GuildChannel).guild;
+
+                // Bot permissions
+                if (perms.bot) {
+                  const botMember = await guild.getRESTMember(
+                    harmonix.client.user.id,
                   );
+                  const botPermissions = (channel as GuildChannel).permissionsOf(
+                    botMember,
+                  );
+                  const missingBotPerms = perms.bot.filter(
+                    (p) => !botPermissions.has(p),
+                  );
+                  if (missingBotPerms.length) {
+                    throw new Error(
+                      `I am missing the following permissions: ${missingBotPerms.join(
+                        ", ",
+                      )}`,
+                    );
+                  }
+                }
+
+                // User permissions
+                if (perms.user) {
+                  const userPermissions = (channel as GuildChannel).permissionsOf(
+                    member,
+                  );
+                  const missingUserPerms = perms.user.filter(
+                    (p) => !userPermissions.has(p),
+                  );
+                  if (missingUserPerms.length) {
+                    throw new Error(
+                      `You are missing the following permissions: ${missingUserPerms.join(
+                        ", ",
+                      )}`,
+                    );
+                  }
+                }
+
+                // Role checks
+                if (perms.roles) {
+                  if (
+                    perms.roles.denied?.some((roleId) =>
+                      member.roles.includes(roleId),
+                    )
+                  ) {
+                    throw new Error(
+                      "You have a role that prevents you from using this command.",
+                    );
+                  }
+                  if (
+                    perms.roles.needed &&
+                    !perms.roles.needed.some((roleId) =>
+                      member.roles.includes(roleId),
+                    )
+                  ) {
+                    throw new Error(
+                      "You do not have the required role to use this command.",
+                    );
+                  }
+                }
+
+                // Channel checks
+                if (perms.channels) {
+                  if (perms.channels.denied?.includes(channel.id)) {
+                    throw new Error(
+                      "This command cannot be used in this channel.",
+                    );
+                  }
+                  if (
+                    perms.channels.needed &&
+                    !perms.channels.needed.includes(channel.id)
+                  ) {
+                    throw new Error(
+                      "This command can only be used in specific channels.",
+                    );
+                  }
+                }
+
+                // Custom check
+                if (perms.custom) {
+                  const customCheckPassed = await Promise.resolve(
+                    perms.custom(harmonix, message),
+                  );
+                  if (!customCheckPassed) {
+                    throw new Error(
+                      "You do not have permission to use this command.",
+                    );
+                  }
                 }
               }
 
@@ -93,19 +209,11 @@ export function defineCommand<
                 ) as T;
               }
 
-              if (config.slashCommand) {
-                await this.execute(
-                  harmonix,
-                  message as CommandInteraction,
-                  commandArgs,
-                );
-              } else {
-                await this.execute(
-                  harmonix,
-                  message as Message<TextableChannel>,
-                  commandArgs,
-                );
-              }
+              await this.execute(
+                harmonix,
+                message as Message<TextableChannel> | CommandInteraction,
+                commandArgs,
+              );
             }).pipe(
               Effect.tapError((error) =>
                 Effect.sync(() => {
