@@ -140,7 +140,14 @@ export default class extends defineCommand({
 
       try {
         await context.channel.guild.banMember(targetMember.id, 0, `Banned by ${moderator.user.username}: ${finalReason}`);
-        await sendBanDM(harmonix.client, targetMember, context.channel.guild, finalReason, moderator.user);
+        
+        // Only send DM if the user is not a bot
+        if (!targetMember.user.bot) {
+          await sendBanDM(harmonix.client, targetMember, context.channel.guild, finalReason, moderator.user);
+        } else if (harmonix.options.debug) {
+          console.log(`[DEBUG] Skipping DM for bot user ${targetMember.id}`);
+        }
+        
         return sendBanConfirmation(harmonix, context, targetMember.user, finalReason);
       } catch (error) {
         console.error("Ban error:", error);
@@ -175,7 +182,13 @@ export default class extends defineCommand({
 
     try {
       await interaction.channel.guild.banMember(targetMember.id, 0, `Banned by ${moderator.user.username}: ${reason}`);
-      await sendBanDM(harmonix.client, targetMember, interaction.channel.guild, reason, moderator.user);
+      
+      // Only send DM if the user is not a bot
+      if (!targetMember.user.bot) {
+        await sendBanDM(harmonix.client, targetMember, interaction.channel.guild, reason, moderator.user);
+      } else if (harmonix.options.debug) {
+        console.log(`[DEBUG] Skipping DM for bot user ${targetMember.id}`);
+      }
       
       return sendBanConfirmation(harmonix, interaction, targetMember.user, reason);
     } catch (error) {
@@ -246,13 +259,21 @@ async function sendBanDM(
   reason: string,
   moderator: User,
 ) {
-  const dmChannel = await client.getDMChannel(banMember.id);
-  const embed = {
-    color: 0xff0000,
-    title: "You have been banned!",
-    description: `**Server:** \`${guild.name}\`\n**Reason:** \`${reason}\`\n**Moderator:** \`${moderator.username}#${moderator.discriminator}\``,
-  };
-  return dmChannel.createMessage({ embed }).catch(() => {});
+  try {
+    const dmChannel = await client.getDMChannel(banMember.id);
+    const embed = {
+      color: 0xff0000,
+      title: "You have been banned!",
+      description: `**Server:** \`${guild.name}\`\n**Reason:** \`${reason}\`\n**Moderator:** \`${moderator.username}#${moderator.discriminator}\``,
+    };
+    return await dmChannel.createMessage({ embed }).catch((error) => {
+      console.warn(`Failed to send ban DM to ${banMember.id}:`, error.message);
+      return null;
+    });
+  } catch (error) {
+    console.error(`Error creating DM channel for ${banMember.id}:`, error);
+    return null;
+  }
 }
 
 async function sendBanConfirmation(
