@@ -36,10 +36,13 @@ export function UserNav({ user }: UserNavProps) {
         <DropdownMenuLabel>{user?.name ?? 'My Account'}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href="/settings">Settings</Link>
+          <Link href="/profile" className="w-full">Profile</Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link href="/support">Support</Link>
+          <Link href="/settings" className="w-full">Settings</Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/support" className="w-full">Support</Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/login' })}>
