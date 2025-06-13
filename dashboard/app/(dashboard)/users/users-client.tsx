@@ -56,84 +56,99 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
   const [newUserId, setNewUserId] = useState('');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  // Format username with discriminator if available (matches profile page logic)
-  const formatUsername = (user: ExtendedUser) => {
-    // If discriminator exists and is not '0', append it
-    if (user.discriminator && user.discriminator !== '0') {
-      return `${user.username}#${user.discriminator}`;
-    }
-    // Otherwise just return the username
-    return user.username || 'Unknown User';
+  /**
+   * Formats a username with discriminator if available
+   * @param user The user object
+   * @returns Formatted username string
+   */
+  const formatUsername = (user: Pick<ExtendedUser, 'username' | 'discriminator' | 'id'>) => {
+    const username = user.username || `User-${user.id?.slice(0, 4) || 'unknown'}`;
+    return user.discriminator && user.discriminator !== '0' 
+      ? `${username}#${user.discriminator}`
+      : username;
   };
 
-  // Get avatar URL with fallback (matches profile page logic)
-  const getAvatarUrl = (user: ExtendedUser) => {
-    // If we already have a direct avatar URL, use it
+  /**
+   * Generates an avatar URL with proper fallbacks
+   * @param user The user object
+   * @returns Avatar URL string
+   */
+  const getAvatarUrl = (user: Pick<ExtendedUser, 'avatar' | 'id' | 'discriminator' | 'avatarUrl'>) => {
+    // Return pre-computed avatar URL if available
     if (user.avatarUrl) return user.avatarUrl;
     
-    // If we have an avatar hash, construct the URL
+    // Generate URL from avatar hash if available
     if (user.avatar && user.id) {
-      // Check if it's a GIF (starts with 'a_')
       const format = user.avatar.startsWith('a_') ? 'gif' : 'png';
       return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${format}`;
     }
     
-    // Fallback to default Discord avatar based on discriminator
+    // Fallback to default avatar based on discriminator
     if (user.discriminator && user.discriminator !== '0') {
       const defaultAvatarIndex = parseInt(user.discriminator) % 5;
       return `https://cdn.discordapp.com/embed/avatars/${defaultAvatarIndex}.png`;
     }
     
-    // Fallback to default avatar
+    // Final fallback
     return 'https://cdn.discordapp.com/embed/avatars/0.png';
   };
 
-  // Fetch profile data for a single user
-  const fetchUserProfile = useCallback(async (userId: string) => {
+  /**
+   * Normalizes user data to match ExtendedUser type
+   */
+  const normalizeUserData = (user: Partial<ExtendedUser> & { id: string }): ExtendedUser => {
+    const now = new Date().toISOString();
+    const discriminator = user.discriminator || '0';
+    const username = user.username || `User-${user.id.slice(0, 4)}`;
+    
+    // Create base user object with required fields
+    const baseUser = {
+      id: user.id,
+      username,
+      discriminator,
+      avatar: user.avatar || null,
+      email: user.email || null,
+      isAdmin: user.isAdmin || false,
+      isBlocked: user.isBlocked || false,
+      createdAt: user.createdAt || now,
+      updatedAt: user.updatedAt || now,
+      guilds: user.guilds || []
+    };
+    
+    // Generate avatar URL with all required properties
+    return {
+      ...baseUser,
+      avatarUrl: getAvatarUrl({
+        id: baseUser.id,
+        discriminator: baseUser.discriminator,
+        avatar: baseUser.avatar,
+        avatarUrl: null // Will be overridden by getAvatarUrl
+      })
+    };
+  };
+
+  /**
+   * Fetches and normalizes user profile data
+   */
+  const fetchUserProfile = useCallback(async (userId: string): Promise<ExtendedUser | null> => {
     try {
       const { data: profile, error } = await getUserProfile(userId);
       
-      if (error) {
-        console.warn('Error fetching user profile:', error);
+      if (error || !profile) {
+        console.warn('Error fetching user profile:', error || 'No data returned');
         return null;
       }
       
-      if (!profile) {
-        console.warn('No profile data returned for user:', userId);
-        return null;
-      }
-      
-      const now = new Date().toISOString();
-      
-      // Handle avatar URL construction with proper format detection
-      let avatarUrl = null;
-      if (profile.avatar) {
-        const format = profile.avatar.startsWith('a_') ? 'gif' : 'png';
-        avatarUrl = `https://cdn.discordapp.com/avatars/${profile.id}/${profile.avatar}.${format}`;
-      } else if (profile.discriminator && profile.discriminator !== '0') {
-        // Fallback to default avatar based on discriminator
-        const defaultAvatarIndex = parseInt(profile.discriminator) % 5;
-        avatarUrl = `https://cdn.discordapp.com/embed/avatars/${defaultAvatarIndex}.png`;
-      } else {
-        // Final fallback to default avatar
-        avatarUrl = 'https://cdn.discordapp.com/embed/avatars/0.png';
-      }
-      
-      const userProfile: ExtendedUser = {
-        id: profile.id,
-        username: profile.username || `User-${profile.id.slice(0, 4)}`,
+      return normalizeUserData({
+        ...profile,
+        id: profile.id || userId, // Ensure we always have an ID
         discriminator: profile.discriminator || '0',
-        avatar: profile.avatar || null,
-        avatarUrl: avatarUrl,
-        email: (profile as any).email || null,
-        isAdmin: profile.isAdmin || false,
-        isBlocked: profile.isBlocked || false,
-        createdAt: profile.createdAt || now,
-        updatedAt: profile.updatedAt || now,
-        guilds: (profile as any).guilds || []
-      };
-      
-      return userProfile;
+        username: profile.username || undefined,
+        email: (profile as any).email,
+        isAdmin: profile.isAdmin,
+        isBlocked: profile.isBlocked,
+        guilds: (profile as any).guilds
+      });
     } catch (error) {
       console.error(`Failed to fetch profile for user ${userId}:`, error);
       return null;
@@ -183,9 +198,8 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
           })
         );
         
-        // Filter out any null profiles and update state
-        const validUsers = usersWithProfiles.filter((user): user is ExtendedUser => user !== null);
-        setUsers(validUsers);
+        // Update state with processed users
+        setUsers(usersWithProfiles);
       } catch (error) {
         console.error('Failed to load users:', error);
         toast.error('Failed to load users. Please try again.');
