@@ -964,16 +964,16 @@ export async function setupServer(harmonix: Harmonix) {
             source = 'api';
             
             // Cache guilds in database for future use
-            if (discordAccount?.user?.id) {
+            if (lookupResult?.user?.id) {
               try {
                 // Delete old cached guilds for this user
                 await prisma.userGuild.deleteMany({
-                  where: { userId: discordAccount.user.id }
+                  where: { userId: lookupResult.user.id }
                 });
                 
                 // Insert new cached guilds
                 const userGuildData = userGuilds.map(guild => ({
-                  userId: discordAccount.user.id,
+                  userId: lookupResult.user.id,
                   guildId: guild.id,
                   permissions: guild.permissions,
                   owner: guild.owner || false
@@ -999,11 +999,11 @@ export async function setupServer(harmonix: Harmonix) {
       }
       
       // If we don't have guilds from API, try to get them from database cache
-      if (userGuildIds.size === 0 && discordAccount?.user?.id) {
+      if (userGuildIds.size === 0 && lookupResult?.user?.id) {
         try {
           console.log(`[MUTUAL-SERVERS] Fetching cached guilds from database...`);
           const cachedGuilds = await prisma.userGuild.findMany({
-            where: { userId: discordAccount.user.id }
+            where: { userId: lookupResult.user.id }
           });
           
           if (cachedGuilds.length > 0) {

@@ -2,7 +2,6 @@ import { PrismaAdapter } from '@auth/prisma-adapter';
 import DiscordProvider from 'next-auth/providers/discord';
 import { prisma } from './prisma';
 import { JWT } from 'next-auth/jwt';
-import { Session } from 'next-auth';
 
 // Type for the permissions data from the bot API
 interface PermissionsData {
@@ -29,7 +28,7 @@ interface PermissionsData {
 
 // Discord profile type from API
 interface DiscordProfile {
-  id: string; // Discord snowflake
+  id: string;
   username: string;
   avatar: string | null;
   discriminator: string;
@@ -52,40 +51,66 @@ interface DiscordTokens {
   scope: string;
 }
 
-// Logger utility for auth operations
-const authLogger = {
-  info: (message: string, data?: Record<string, unknown>) => {
-    console.log(`[AUTH][INFO] ${message}`, data ? JSON.stringify(data, null, 2) : '');
+// Enhanced logger with colors and detailed output
+const AUTH_PREFIX = '\x1b[35m[AUTH]\x1b[0m';
+const SUCCESS_PREFIX = '\x1b[32m[AUTH]\x1b[0m';
+const ERROR_PREFIX = '\x1b[31m[AUTH]\x1b[0m';
+const WARN_PREFIX = '\x1b[33m[AUTH]\x1b[0m';
+const DEBUG_PREFIX = '\x1b[36m[AUTH]\x1b[0m';
+
+const authLog = {
+  info: (message: string, data?: unknown) => {
+    console.log(`${AUTH_PREFIX} ${message}`, data !== undefined ? JSON.stringify(data, null, 2) : '');
   },
-  warn: (message: string, data?: Record<string, unknown>) => {
-    console.warn(`[AUTH][WARN] ${message}`, data ? JSON.stringify(data, null, 2) : '');
+  success: (message: string, data?: unknown) => {
+    console.log(`${SUCCESS_PREFIX} ✓ ${message}`, data !== undefined ? JSON.stringify(data, null, 2) : '');
   },
-  error: (message: string, error?: unknown, data?: Record<string, unknown>) => {
-    console.error(`[AUTH][ERROR] ${message}`, {
-      error: error instanceof Error ? { message: error.message, stack: error.stack } : error,
-      ...data
-    });
-  },
-  debug: (message: string, data?: Record<string, unknown>) => {
-    if (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEBUG === 'true') {
-      console.log(`[AUTH][DEBUG] ${message}`, data ? JSON.stringify(data, null, 2) : '');
+  error: (message: string, error?: unknown, data?: unknown) => {
+    console.error(`${ERROR_PREFIX} ✗ ${message}`);
+    if (error) {
+      if (error instanceof Error) {
+        console.error(`${ERROR_PREFIX}   Error: ${error.message}`);
+        if (error.stack) console.error(`${ERROR_PREFIX}   Stack: ${error.stack}`);
+      } else {
+        console.error(`${ERROR_PREFIX}   Error:`, error);
+      }
     }
+    if (data) console.error(`${ERROR_PREFIX}   Data:`, JSON.stringify(data, null, 2));
+  },
+  warn: (message: string, data?: unknown) => {
+    console.warn(`${WARN_PREFIX} ⚠ ${message}`, data !== undefined ? JSON.stringify(data, null, 2) : '');
+  },
+  debug: (message: string, data?: unknown) => {
+    if (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEBUG === 'true') {
+      console.log(`${DEBUG_PREFIX} [DEBUG] ${message}`, data !== undefined ? JSON.stringify(data, null, 2) : '');
+    }
+  },
+  step: (stepNum: number, message: string, data?: unknown) => {
+    console.log(`${AUTH_PREFIX} [Step ${stepNum}] ${message}`, data !== undefined ? JSON.stringify(data, null, 2) : '');
+  },
+  divider: (title: string) => {
+    console.log(`\n${AUTH_PREFIX} ${'='.repeat(50)}`);
+    console.log(`${AUTH_PREFIX} ${title}`);
+    console.log(`${AUTH_PREFIX} ${'='.repeat(50)}`);
   },
 };
 
 // Function to fetch user permissions from the bot API
 async function fetchUserPermissions(discordId: string): Promise<{ isAdmin: boolean; role: number }> {
+  authLog.step(0, 'Fetching user permissions from bot API', { discordId });
   const startTime = Date.now();
+  
   try {
-    authLogger.debug('Fetching user permissions', { discordId });
+    const botApiUrl = process.env.NEXT_PUBLIC_BOT_API_URL || 'http://localhost:3001';
+    authLog.debug(`Calling bot API: ${botApiUrl}/api/permissions`);
     
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BOT_API_URL || 'http://localhost:3001'}/api/permissions`, {
-      signal: AbortSignal.timeout(5000), // 5 second timeout
+    const response = await fetch(`${botApiUrl}/api/permissions`, {
+      signal: AbortSignal.timeout(5000),
     });
     
     if (!response.ok) {
       const errorText = await response.text();
-      authLogger.warn('Failed to fetch permissions from bot API', { 
+      authLog.warn('Bot API returned error, defaulting to regular user', { 
         status: response.status, 
         error: errorText,
         discordId 
@@ -94,31 +119,40 @@ async function fetchUserPermissions(discordId: string): Promise<{ isAdmin: boole
     }
     
     const data: PermissionsData = await response.json();
+    authLog.debug('Bot API response received', { 
+      botOwnerId: data.botOwnerId,
+      adminCount: data.admins?.length || 0,
+      moderatorCount: data.moderators?.length || 0,
+    });
     
     // Check if user is the bot owner
     if (discordId === data.botOwnerId) {
-      authLogger.debug('User is bot owner', { discordId });
-      return { isAdmin: true, role: 3 }; // Owner role
+      authLog.success('User is bot owner', { discordId, role: 3 });
+      return { isAdmin: true, role: 3 };
     }
     
     // Check if user is an admin
-    const admin = data.admins.find(admin => admin.discordId === discordId);
+    const admin = data.admins?.find(admin => admin.discordId === discordId);
     if (admin) {
-      authLogger.debug('User is admin', { discordId, role: admin.role });
+      authLog.success('User is admin', { discordId, role: admin.role });
       return { isAdmin: true, role: admin.role };
     }
     
     // Check if user is a moderator
-    const moderator = data.moderators.find(mod => mod.discordId === discordId);
+    const moderator = data.moderators?.find(mod => mod.discordId === discordId);
     if (moderator) {
-      authLogger.debug('User is moderator', { discordId, role: moderator.role });
+      authLog.success('User is moderator', { discordId, role: moderator.role });
       return { isAdmin: false, role: moderator.role };
     }
     
-    authLogger.debug('User is regular user', { discordId, duration: Date.now() - startTime });
+    authLog.debug('User is regular user', { discordId, duration: Date.now() - startTime });
     return { isAdmin: false, role: 0 };
   } catch (error) {
-    authLogger.error('Error fetching user permissions', error, { discordId, duration: Date.now() - startTime });
+    authLog.warn('Error fetching permissions, defaulting to regular user', { 
+      discordId, 
+      duration: Date.now() - startTime,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return { isAdmin: false, role: 0 };
   }
 }
@@ -131,7 +165,6 @@ function getDiscordAvatarUrl(discordId: string, avatarHash: string | null, discr
     return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.${format}?size=256`;
   }
   
-  // Fallback to default Discord avatar
   const avatarIndex = discriminator === '0' 
     ? (BigInt(discordId) >> BigInt(22)) % BigInt(6)
     : parseInt(discriminator) % 5;
@@ -140,21 +173,25 @@ function getDiscordAvatarUrl(discordId: string, avatarHash: string | null, discr
 
 // Validate that a string is a valid Discord snowflake ID
 function isValidDiscordSnowflake(id: string): boolean {
-  // Discord snowflakes are numeric strings between 17-19 characters
-  // They must be valid integers and represent a timestamp after Discord's epoch
-  if (!id || typeof id !== 'string') return false;
-  if (!/^\d{17,19}$/.test(id)) return false;
+  if (!id || typeof id !== 'string') {
+    authLog.debug(`isValidDiscordSnowflake: Invalid input`, { id, type: typeof id });
+    return false;
+  }
+  if (!/^\d{17,19}$/.test(id)) {
+    authLog.debug(`isValidDiscordSnowflake: Invalid format`, { id, pattern: 'should be 17-19 digits' });
+    return false;
+  }
   
   try {
     const snowflake = BigInt(id);
-    // Discord epoch is 2015-01-01 (1420070400000)
-    // Snowflake timestamp is (snowflake >> 22) + 1420070400000
     const timestamp = Number((snowflake >> BigInt(22))) + 1420070400000;
-    // Must be after Discord's epoch and before 50 years in the future
     const now = Date.now();
     const maxFuture = now + (50 * 365 * 24 * 60 * 60 * 1000);
-    return timestamp >= 1420070400000 && timestamp < maxFuture;
-  } catch {
+    const isValid = timestamp >= 1420070400000 && timestamp < maxFuture;
+    authLog.debug(`isValidDiscordSnowflake: Validation result`, { id, isValid, timestamp: new Date(timestamp).toISOString() });
+    return isValid;
+  } catch (e) {
+    authLog.debug(`isValidDiscordSnowflake: Exception`, { id, error: String(e) });
     return false;
   }
 }
@@ -194,122 +231,161 @@ declare module 'next-auth/jwt' {
 }
 
 export const authConfig = {
-  // Don't use PrismaAdapter - we handle user/account creation manually in the profile callback
-  // adapter: PrismaAdapter(prisma),
   providers: [
     DiscordProvider({
       clientId: process.env.DISCORD_CLIENT_ID as string,
       clientSecret: process.env.DISCORD_CLIENT_SECRET as string,
-      allowDangerousEmailAccountLinking: true, // Allow linking accounts with same email
+      allowDangerousEmailAccountLinking: true,
       authorization: {
         params: {
           scope: 'identify email guilds guilds.members.read',
-          prompt: 'consent', // Required to get refresh token from Discord
+          prompt: 'consent',
         },
       },
       async profile(profile: DiscordProfile, tokens: DiscordTokens) {
-        const operationId = `profile-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const startTime = Date.now();
+        const opId = `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
         
-        authLogger.info(`[${operationId}] Starting profile callback`, {
+        authLog.divider(`PROFILE CALLBACK START [${opId}]`);
+        
+        // Log all incoming data
+        authLog.step(1, 'Incoming Discord profile data', {
           discordId: profile.id,
           username: profile.username,
-          hasEmail: !!profile.email,
+          discriminator: profile.discriminator,
+          globalName: profile.global_name,
+          email: profile.email,
+          avatar: profile.avatar,
+          verified: profile.verified,
+        });
+        
+        authLog.step(2, 'Incoming tokens', {
           hasAccessToken: !!tokens.access_token,
           hasRefreshToken: !!tokens.refresh_token,
+          expiresIn: tokens.expires_in,
+          tokenType: tokens.token_type,
+          scope: tokens.scope,
         });
 
-        // CRITICAL: Validate the Discord ID
+        // CRITICAL VALIDATION
         const discordId = profile.id;
+        
         if (!discordId) {
-          authLogger.error(`[${operationId}] No Discord ID in profile`, { profile });
+          authLog.error('CRITICAL: No Discord ID in profile!', { profile });
           throw new Error('No Discord ID found in profile');
         }
 
-        // Validate Discord snowflake format
         if (!isValidDiscordSnowflake(discordId)) {
-          authLogger.error(`[${operationId}] Invalid Discord snowflake`, { discordId, profile });
+          authLog.error('CRITICAL: Invalid Discord snowflake format!', { discordId, profile });
           throw new Error(`Invalid Discord ID format: ${discordId}`);
         }
+        
+        authLog.success('Discord ID validated', { discordId });
 
-        authLogger.debug(`[${operationId}] Discord ID validated`, { discordId });
-
-        // Validate tokens
         if (!tokens.access_token) {
-          authLogger.error(`[${operationId}] No access token received from Discord`);
+          authLog.error('CRITICAL: No access token from Discord!');
           throw new Error('No access token received from Discord');
         }
+        
+        authLog.success('Access token present');
+
+        // ========================================
+        // DATABASE OPERATIONS
+        // ========================================
+        
+        let userResult: {
+          id: string;
+          name: string | null;
+          email: string | null;
+          image: string | null;
+          isAdmin: boolean;
+          isBlocked: boolean;
+          discordId: string;
+        } | null = null;
 
         try {
-          // Use a transaction for atomic operations
-          const result = await prisma.$transaction(async (tx) => {
-            // Step 1: Try to find existing account by Discord snowflake
-            authLogger.debug(`[${operationId}] Searching for existing account`, { discordId });
-            
-            const existingAccount = await tx.account.findUnique({
-              where: {
-                provider_providerAccountId: {
-                  provider: 'discord',
-                  providerAccountId: discordId, // MUST be the Discord snowflake
-                },
+          authLog.step(3, 'Starting database transaction');
+          
+          // STEP 3a: Check for existing account by Discord snowflake
+          authLog.debug('Querying Account table for existing Discord account', { discordId });
+          
+          const existingAccount = await prisma.account.findUnique({
+            where: {
+              provider_providerAccountId: {
+                provider: 'discord',
+                providerAccountId: discordId,
               },
-              include: {
-                user: true,
-              },
+            },
+            include: {
+              user: true,
+            },
+          });
+
+          if (existingAccount) {
+            authLog.step(4, 'FOUND existing account by Discord ID', {
+              accountId: existingAccount.id,
+              providerAccountId: existingAccount.providerAccountId,
+              userId: existingAccount.user.id,
+              userName: existingAccount.user.name,
+              userDiscordId: existingAccount.user.discordId,
+              userIsAdmin: existingAccount.user.isAdmin,
             });
 
-            if (existingAccount) {
-              authLogger.info(`[${operationId}] Found existing account`, {
-                userId: existingAccount.user.id,
-                discordId: existingAccount.providerAccountId,
-                userName: existingAccount.user.name,
+            // Verify data consistency
+            if (existingAccount.providerAccountId !== discordId) {
+              authLog.warn('DATA INCONSISTENCY: providerAccountId mismatch!', {
+                expected: discordId,
+                actual: existingAccount.providerAccountId,
               });
+            }
 
-              // Update the account with new tokens
-              await tx.account.update({
-                where: {
-                  id: existingAccount.id,
-                },
-                data: {
-                  access_token: tokens.access_token,
-                  refresh_token: tokens.refresh_token,
-                  expires_at: Math.floor(Date.now() / 1000) + (tokens.expires_in || 604800),
-                  token_type: tokens.token_type,
-                  scope: tokens.scope,
-                },
-              });
+            const avatarUrl = getDiscordAvatarUrl(discordId, profile.avatar, profile.discriminator);
 
-              // Update user info if needed
-              const avatarUrl = getDiscordAvatarUrl(discordId, profile.avatar, profile.discriminator);
-              
-              await tx.user.update({
-                where: { id: existingAccount.user.id },
-                data: {
-                  name: profile.username || existingAccount.user.name,
-                  email: profile.email || existingAccount.user.email,
-                  image: avatarUrl,
-                  discordId: discordId, // Ensure discordId is set on user
-                },
-              });
+            // Update account tokens
+            authLog.debug('Updating account tokens', { accountId: existingAccount.id });
+            await prisma.account.update({
+              where: { id: existingAccount.id },
+              data: {
+                access_token: tokens.access_token,
+                refresh_token: tokens.refresh_token,
+                expires_at: Math.floor(Date.now() / 1000) + (tokens.expires_in || 604800),
+                token_type: tokens.token_type,
+                scope: tokens.scope,
+              },
+            });
+            authLog.success('Account tokens updated');
 
-              return {
-                id: existingAccount.user.id,
+            // Update user info
+            authLog.debug('Updating user info', { userId: existingAccount.user.id });
+            await prisma.user.update({
+              where: { id: existingAccount.user.id },
+              data: {
                 name: profile.username || existingAccount.user.name,
                 email: profile.email || existingAccount.user.email,
                 image: avatarUrl,
-                isAdmin: existingAccount.user.isAdmin,
-                isBlocked: existingAccount.user.isBlocked,
                 discordId: discordId,
-              };
-            }
-
-            // Step 2: No existing account - check for existing user by email
-            authLogger.debug(`[${operationId}] No existing account, checking by email`, { 
-              email: profile.email 
+              },
             });
+            authLog.success('User info updated');
 
+            userResult = {
+              id: existingAccount.user.id,
+              name: profile.username || existingAccount.user.name,
+              email: profile.email || existingAccount.user.email,
+              image: avatarUrl,
+              isAdmin: existingAccount.user.isAdmin,
+              isBlocked: existingAccount.user.isBlocked,
+              discordId: discordId,
+            };
+            
+            authLog.success('Profile callback will return existing user', userResult);
+          } else {
+            authLog.step(4, 'NO existing account found by Discord ID');
+
+            // STEP 4b: Check for existing user by email
             if (profile.email) {
-              const existingUser = await tx.user.findUnique({
+              authLog.debug('Querying User table by email', { email: profile.email });
+              
+              const existingUser = await prisma.user.findUnique({
                 where: { email: profile.email },
                 include: {
                   accounts: {
@@ -319,19 +395,27 @@ export const authConfig = {
               });
 
               if (existingUser) {
-                authLogger.info(`[${operationId}] Found existing user by email`, {
+                authLog.step(5, 'FOUND existing user by email', {
                   userId: existingUser.id,
-                  existingDiscordId: existingUser.discordId,
-                  hasDiscordAccount: existingUser.accounts.length > 0,
+                  userName: existingUser.name,
+                  userDiscordId: existingUser.discordId,
+                  hasExistingDiscordAccount: existingUser.accounts.length > 0,
                 });
 
-                // Check if user already has a Discord account linked
+                const avatarUrl = getDiscordAvatarUrl(discordId, profile.avatar, profile.discriminator);
+
                 if (existingUser.accounts.length > 0) {
                   // Update existing Discord account
-                  await tx.account.update({
+                  authLog.debug('Updating existing Discord account', { 
+                    accountId: existingUser.accounts[0].id,
+                    oldProviderAccountId: existingUser.accounts[0].providerAccountId,
+                    newProviderAccountId: discordId,
+                  });
+                  
+                  await prisma.account.update({
                     where: { id: existingUser.accounts[0].id },
                     data: {
-                      providerAccountId: discordId, // Update to correct Discord ID
+                      providerAccountId: discordId,
                       access_token: tokens.access_token,
                       refresh_token: tokens.refresh_token,
                       expires_at: Math.floor(Date.now() / 1000) + (tokens.expires_in || 604800),
@@ -339,26 +423,29 @@ export const authConfig = {
                       scope: tokens.scope,
                     },
                   });
+                  authLog.success('Existing Discord account updated');
                 } else {
                   // Create new Discord account for existing user
-                  await tx.account.create({
+                  authLog.debug('Creating new Discord account for existing user');
+                  
+                  await prisma.account.create({
                     data: {
                       userId: existingUser.id,
                       type: 'oauth',
                       provider: 'discord',
-                      providerAccountId: discordId, // MUST be the Discord snowflake
-                      refresh_token: tokens.refresh_token,
+                      providerAccountId: discordId,
                       access_token: tokens.access_token,
+                      refresh_token: tokens.refresh_token,
                       expires_at: Math.floor(Date.now() / 1000) + (tokens.expires_in || 604800),
                       token_type: tokens.token_type,
                       scope: tokens.scope,
                     },
                   });
+                  authLog.success('New Discord account created');
                 }
 
-                // Update user with Discord ID
-                const avatarUrl = getDiscordAvatarUrl(discordId, profile.avatar, profile.discriminator);
-                await tx.user.update({
+                // Update user
+                await prisma.user.update({
                   where: { id: existingUser.id },
                   data: {
                     name: profile.username || existingUser.name,
@@ -367,7 +454,7 @@ export const authConfig = {
                   },
                 });
 
-                return {
+                userResult = {
                   id: existingUser.id,
                   name: profile.username || existingUser.name,
                   email: existingUser.email,
@@ -376,25 +463,33 @@ export const authConfig = {
                   isBlocked: existingUser.isBlocked,
                   discordId: discordId,
                 };
+                
+                authLog.success('Profile callback will return existing user (found by email)', userResult);
               }
+            } else {
+              authLog.debug('No email provided, skipping email lookup');
             }
+          }
 
-            // Step 3: No existing user - create new user and account
-            authLogger.info(`[${operationId}] Creating new user and account`, { 
-              discordId, 
-              username: profile.username 
+          // STEP 5: Create new user if not found
+          if (!userResult) {
+            authLog.step(6, 'Creating NEW user (no existing user found)');
+            
+            const { isAdmin, role } = await fetchUserPermissions(discordId);
+            const avatarUrl = getDiscordAvatarUrl(discordId, profile.avatar, profile.discriminator);
+
+            authLog.debug('Creating user with permissions', {
+              discordId,
+              isAdmin,
+              role,
+              username: profile.username,
             });
 
-            // Fetch permissions for new user
-            const { isAdmin, role } = await fetchUserPermissions(discordId);
-            
-            const avatarUrl = getDiscordAvatarUrl(discordId, profile.avatar, profile.discriminator);
-            
-            const newUser = await tx.user.create({
+            const newUser = await prisma.user.create({
               data: {
                 name: profile.username,
                 email: profile.email,
-                discordId: discordId, // Store Discord snowflake in user table
+                discordId: discordId,
                 image: avatarUrl,
                 isAdmin,
                 role,
@@ -403,9 +498,9 @@ export const authConfig = {
                   create: {
                     type: 'oauth',
                     provider: 'discord',
-                    providerAccountId: discordId, // MUST be the Discord snowflake
-                    refresh_token: tokens.refresh_token,
+                    providerAccountId: discordId,
                     access_token: tokens.access_token,
+                    refresh_token: tokens.refresh_token,
                     expires_at: Math.floor(Date.now() / 1000) + (tokens.expires_in || 604800),
                     token_type: tokens.token_type,
                     scope: tokens.scope,
@@ -414,14 +509,14 @@ export const authConfig = {
               },
             });
 
-            authLogger.info(`[${operationId}] Created new user`, {
+            authLog.success('New user created', {
               userId: newUser.id,
               discordId: newUser.discordId,
               isAdmin: newUser.isAdmin,
               role: newUser.role,
             });
 
-            return {
+            userResult = {
               id: newUser.id,
               name: profile.username,
               email: profile.email,
@@ -430,25 +525,29 @@ export const authConfig = {
               isBlocked: newUser.isBlocked,
               discordId: discordId,
             };
-          }, {
-            maxWait: 5000, // Maximum time to wait for transaction to start
-            timeout: 10000, // Maximum time transaction can run
-          });
+          }
 
-          authLogger.info(`[${operationId}] Profile callback completed`, {
-            userId: result.id,
-            discordId: result.discordId,
-            duration: Date.now() - startTime,
-          });
-
-          return result;
-        } catch (error) {
-          authLogger.error(`[${operationId}] Error in profile callback`, error, {
-            discordId,
-            duration: Date.now() - startTime,
-          });
-          throw error;
+        } catch (dbError) {
+          authLog.error('DATABASE ERROR in profile callback', dbError, { discordId });
+          throw dbError;
         }
+
+        // FINAL VALIDATION
+        if (!userResult || !userResult.id) {
+          authLog.error('CRITICAL: No user result at end of profile callback!', { userResult });
+          throw new Error('Failed to create or find user');
+        }
+
+        // CRITICAL: Ensure we return the EXACT user ID from the database
+        authLog.divider(`PROFILE CALLBACK END [${opId}]`);
+        authLog.success('RETURNING USER DATA', {
+          id: userResult.id,
+          discordId: userResult.discordId,
+          name: userResult.name,
+          isAdmin: userResult.isAdmin,
+        });
+
+        return userResult;
       },
     }),
   ],
@@ -456,19 +555,26 @@ export const authConfig = {
     strategy: 'jwt' as const,
   },
   callbacks: {
-    async jwt({ token, user, account, trigger }) {
-      const operationId = `jwt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    async jwt({ token, user, account }) {
+      const opId = `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
       
-      // Initial sign in
+      // Initial sign in - user object comes from profile callback
       if (account && user) {
-        authLogger.debug(`[${operationId}] JWT callback - initial sign in`, {
+        authLog.divider(`JWT CALLBACK - INITIAL SIGN IN [${opId}]`);
+        
+        authLog.step(1, 'JWT callback received', {
           userId: user.id,
+          userName: user.name,
+          userDiscordId: (user as any).discordId,
           provider: account.provider,
           hasAccessToken: !!account.access_token,
+          hasRefreshToken: !!account.refresh_token,
         });
 
-        // Get the full user data including image, role, and discordId
-        const fullUser = await prisma.user.findUnique({
+        // CRITICAL: Verify user exists in database
+        authLog.step(2, 'Verifying user exists in database', { userId: user.id });
+        
+        const dbUser = await prisma.user.findUnique({
           where: { id: user.id },
           select: {
             id: true,
@@ -482,6 +588,7 @@ export const authConfig = {
             accounts: {
               where: { provider: 'discord' },
               select: {
+                id: true,
                 providerAccountId: true,
                 access_token: true,
                 refresh_token: true,
@@ -490,31 +597,90 @@ export const authConfig = {
           },
         });
 
-        if (!fullUser) {
-          authLogger.error(`[${operationId}] User not found in database after profile callback`, {
-            userId: user.id,
+        if (!dbUser) {
+          authLog.error('CRITICAL: User NOT FOUND in database after profile callback!', { 
+            profileReturnedId: user.id,
           });
-          throw new Error('User not found after authentication');
-        }
-
-        // Validate that we have the correct Discord ID
-        const discordAccount = fullUser.accounts[0];
-        if (discordAccount && !isValidDiscordSnowflake(discordAccount.providerAccountId)) {
-          authLogger.error(`[${operationId}] Invalid providerAccountId in database`, {
-            providerAccountId: discordAccount.providerAccountId,
-            userId: fullUser.id,
-          });
-          // This shouldn't happen, but we'll try to recover
-        }
-
-        // Update the account with the tokens if we have them from the initial auth
-        if (account.access_token && account.refresh_token) {
-          try {
-            await prisma.account.updateMany({
+          
+          // EMERGENCY RECOVERY: Try to find user by discordId
+          authLog.warn('Attempting emergency recovery by Discord ID...');
+          
+          const discordId = (user as any).discordId;
+          if (discordId) {
+            const recoveredUser = await prisma.user.findFirst({
               where: {
-                userId: user.id,
-                provider: 'discord',
+                OR: [
+                  { discordId: discordId },
+                  { accounts: { some: { providerAccountId: discordId } } },
+                ],
               },
+              select: {
+                id: true,
+                discordId: true,
+                name: true,
+                isAdmin: true,
+                isBlocked: true,
+                role: true,
+              },
+            });
+            
+            if (recoveredUser) {
+              authLog.success('EMERGENCY RECOVERY SUCCESSFUL', { recoveredUserId: recoveredUser.id });
+              
+              // Continue with recovered user
+              return {
+                ...token,
+                accessToken: account.access_token,
+                accessTokenExpires: account.expires_at ? account.expires_at * 1000 : Date.now() + 604800 * 1000,
+                refreshToken: account.refresh_token,
+                user: {
+                  id: recoveredUser.id,
+                  isAdmin: recoveredUser.isAdmin,
+                  isBlocked: recoveredUser.isBlocked,
+                  role: recoveredUser.role,
+                  discordId: recoveredUser.discordId,
+                },
+              };
+            }
+          }
+          
+          throw new Error('User not found after authentication - database sync issue');
+        }
+
+        authLog.success('User verified in database', {
+          dbUserId: dbUser.id,
+          dbUserDiscordId: dbUser.discordId,
+          dbUserIsAdmin: dbUser.isAdmin,
+          accountsCount: dbUser.accounts.length,
+        });
+
+        // Log account details
+        if (dbUser.accounts.length > 0) {
+          const discordAccount = dbUser.accounts[0];
+          authLog.debug('Discord account details', {
+            accountId: discordAccount.id,
+            providerAccountId: discordAccount.providerAccountId,
+            hasAccessToken: !!discordAccount.access_token,
+            hasRefreshToken: !!discordAccount.refresh_token,
+          });
+          
+          // Validate providerAccountId is a Discord snowflake
+          if (!isValidDiscordSnowflake(discordAccount.providerAccountId)) {
+            authLog.warn('INVALID providerAccountId detected!', {
+              providerAccountId: discordAccount.providerAccountId,
+              expected: 'Discord snowflake (17-19 digits)',
+            });
+          }
+        } else {
+          authLog.warn('User has no Discord account linked!');
+        }
+
+        // Update tokens in database if we have them from the OAuth flow
+        if (account.access_token && account.refresh_token && dbUser.accounts.length > 0) {
+          authLog.debug('Updating tokens in database from JWT callback');
+          try {
+            await prisma.account.update({
+              where: { id: dbUser.accounts[0].id },
               data: {
                 access_token: account.access_token,
                 refresh_token: account.refresh_token,
@@ -523,55 +689,54 @@ export const authConfig = {
                 scope: account.scope,
               },
             });
-          } catch (error) {
-            authLogger.warn(`[${operationId}] Failed to update tokens in JWT callback`, { error });
-            // Continue - the tokens from profile callback should be there
+            authLog.success('Tokens updated in database');
+          } catch (updateError) {
+            authLog.warn('Failed to update tokens (non-critical)', { error: String(updateError) });
           }
         }
 
         const result = {
           ...token,
-          accessToken: account.access_token || discordAccount?.access_token,
-          accessTokenExpires: account.expires_at ? account.expires_at * 1000 : Date.now() + (account.expires_in || 604800) * 1000,
-          refreshToken: account.refresh_token || discordAccount?.refresh_token,
+          accessToken: account.access_token,
+          accessTokenExpires: account.expires_at ? account.expires_at * 1000 : Date.now() + 604800 * 1000,
+          refreshToken: account.refresh_token,
           user: {
-            id: user.id,
-            name: fullUser.name,
-            email: fullUser.email,
-            image: fullUser.image,
-            isAdmin: fullUser.isAdmin,
-            isBlocked: fullUser.isBlocked,
-            role: fullUser.role !== undefined ? fullUser.role : 0,
-            discordId: fullUser.discordId || discordAccount?.providerAccountId || null,
+            id: dbUser.id,
+            isAdmin: dbUser.isAdmin,
+            isBlocked: dbUser.isBlocked,
+            role: dbUser.role ?? 0,
+            discordId: dbUser.discordId || dbUser.accounts[0]?.providerAccountId || null,
           },
         };
 
-        authLogger.debug(`[${operationId}] JWT token created`, {
-          userId: user.id,
+        authLog.success('JWT token created successfully', {
+          userId: result.user?.id,
           discordId: result.user?.discordId,
         });
+        authLog.divider(`JWT CALLBACK END [${opId}]`);
 
         return result;
       }
 
-      // Return previous token if the access token has not expired yet
+      // Return previous token if not expired
       if (token.accessTokenExpires && Date.now() < token.accessTokenExpires - 60000) {
         return token;
       }
 
-      // Access token has expired, try to update it
-      authLogger.debug(`[${operationId}] Access token expired, refreshing`);
-      return refreshAccessToken(token, operationId);
+      // Refresh token if expired
+      authLog.info('Access token expired, refreshing...');
+      return refreshAccessToken(token);
     },
+    
     async session({ session, token }) {
-      const operationId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const opId = `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
       
-      if (token?.user?.id) {
-        authLogger.debug(`[${operationId}] Session callback`, {
-          userId: token.user.id,
-          discordId: token.user.discordId,
-        });
+      authLog.debug(`Session callback [${opId}]`, {
+        tokenUserId: token.user?.id,
+        tokenDiscordId: token.user?.discordId,
+      });
 
+      if (token?.user?.id) {
         // Fetch fresh user data from database
         const dbUser = await prisma.user.findUnique({
           where: { id: token.user.id },
@@ -586,26 +751,14 @@ export const authConfig = {
             discordId: true,
             accounts: {
               where: { provider: 'discord' },
-              select: { 
-                providerAccountId: true,
-                access_token: true,
-              }
+              select: { providerAccountId: true }
             }
           },
         });
 
         if (dbUser) {
-          // Use the discordId from user table first, then from account
           const userDiscordId = dbUser.discordId || dbUser.accounts[0]?.providerAccountId || null;
           
-          // Validate the Discord ID
-          if (userDiscordId && !isValidDiscordSnowflake(userDiscordId)) {
-            authLogger.warn(`[${operationId}] Invalid Discord ID in session`, { 
-              userDiscordId,
-              userId: dbUser.id 
-            });
-          }
-
           session.user = {
             id: dbUser.id,
             name: dbUser.name,
@@ -613,35 +766,32 @@ export const authConfig = {
             image: dbUser.image,
             isAdmin: dbUser.isAdmin,
             isBlocked: dbUser.isBlocked,
-            role: dbUser.role !== undefined ? dbUser.role : 0,
+            role: dbUser.role ?? 0,
             discordId: userDiscordId,
           };
 
-          authLogger.debug(`[${operationId}] Session populated from database`, {
+          authLog.debug(`Session populated from database [${opId}]`, {
             userId: dbUser.id,
             discordId: userDiscordId,
             isAdmin: dbUser.isAdmin,
           });
         } else {
-          // Fallback to token data if user not found in database
-          authLogger.warn(`[${operationId}] User not found in database, using token data`);
+          authLog.warn(`User not found in database, using token data [${opId}]`);
           session.user = {
             ...session.user,
             id: token.user.id,
-            isAdmin: token.user.isAdmin || false,
-            isBlocked: token.user.isBlocked || false,
-            discordId: token.user.discordId || null,
+            isAdmin: token.user.isAdmin,
+            isBlocked: token.user.isBlocked,
+            discordId: token.user.discordId,
           };
         }
 
-        // Add access token to session
         if (token.accessToken) {
-          session.accessToken = token.accessToken as string;
+          session.accessToken = token.accessToken;
         }
         
-        // Add error if present
         if (token.error) {
-          session.error = token.error as 'RefreshAccessTokenError';
+          session.error = token.error;
         }
       }
       
@@ -656,15 +806,10 @@ export const authConfig = {
   },
 };
 
-async function refreshAccessToken(token: JWT, operationId?: string): Promise<JWT> {
-  const opId = operationId || `refresh-${Date.now()}`;
-  
-  authLogger.debug(`[${opId}] Starting token refresh`, {
-    userId: token.user?.id || token.sub,
-  });
+async function refreshAccessToken(token: JWT): Promise<JWT> {
+  authLog.info('Refreshing access token');
   
   try {
-    // Get the refresh token from the database to ensure it's up to date
     const account = await prisma.account.findFirst({
       where: {
         userId: token.user?.id || token.sub,
@@ -673,23 +818,15 @@ async function refreshAccessToken(token: JWT, operationId?: string): Promise<JWT
       select: {
         id: true,
         refresh_token: true,
-        access_token: true,
-        expires_at: true,
         providerAccountId: true,
       },
     });
 
     if (!account?.refresh_token) {
-      authLogger.warn(`[${opId}] No refresh token found for user`);
-      return {
-        ...token,
-        error: 'RefreshAccessTokenError' as const,
-      };
+      authLog.warn('No refresh token found for user');
+      return { ...token, error: 'RefreshAccessTokenError' };
     }
 
-    authLogger.debug(`[${opId}] Making token refresh request to Discord`);
-    
-    // Discord requires form-urlencoded body
     const params = new URLSearchParams({
       client_id: process.env.DISCORD_CLIENT_ID!,
       client_secret: process.env.DISCORD_CLIENT_SECRET!,
@@ -699,49 +836,32 @@ async function refreshAccessToken(token: JWT, operationId?: string): Promise<JWT
 
     const response = await fetch('https://discord.com/api/oauth2/token', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params.toString(),
-      signal: AbortSignal.timeout(10000), // 10 second timeout
+      signal: AbortSignal.timeout(10000),
     });
 
     const refreshedTokens = await response.json();
 
     if (!response.ok) {
-      authLogger.error(`[${opId}] Token refresh failed`, {
+      authLog.error('Token refresh failed', null, {
         status: response.status,
-        error: refreshedTokens.error || refreshedTokens.message,
+        error: refreshedTokens.error,
       });
       
-      // Check for specific error types
       if (response.status === 400 && refreshedTokens.error === 'invalid_grant') {
-        authLogger.warn(`[${opId}] Refresh token is invalid, user needs to re-authenticate`);
-        
-        // Clear the invalid tokens
-        try {
-          await prisma.account.update({
-            where: { id: account.id },
-            data: {
-              access_token: null,
-              refresh_token: null,
-              expires_at: null,
-            },
-          });
-        } catch (error) {
-          authLogger.error(`[${opId}] Failed to clear invalid tokens`, error);
-        }
+        authLog.warn('Refresh token invalid, clearing tokens');
+        await prisma.account.update({
+          where: { id: account.id },
+          data: { access_token: null, refresh_token: null, expires_at: null },
+        });
       }
       
-      return {
-        ...token,
-        error: 'RefreshAccessTokenError' as const,
-      };
+      return { ...token, error: 'RefreshAccessTokenError' };
     }
 
-    authLogger.info(`[${opId}] Token refresh successful`);
+    authLog.success('Token refresh successful');
     
-    // Update the account with the new tokens
     await prisma.account.update({
       where: { id: account.id },
       data: {
@@ -761,10 +881,7 @@ async function refreshAccessToken(token: JWT, operationId?: string): Promise<JWT
       error: undefined,
     };
   } catch (error) {
-    authLogger.error(`[${opId}] Error refreshing access token`, error);
-    return {
-      ...token,
-      error: 'RefreshAccessTokenError' as const,
-    };
+    authLog.error('Error refreshing access token', error);
+    return { ...token, error: 'RefreshAccessTokenError' };
   }
 }
