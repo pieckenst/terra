@@ -13,7 +13,7 @@ import { logError } from "../../discordkit/utils/centralloggingfactory";
 import { colors } from "consola/utils";
 import consola from "consola";
 import { prisma } from "../lib/db";
-import { logEvent } from "../lib/analytics";
+import { logCommandUsed, logCommandSuccess, logCommandError } from "../lib/analytics";
 
 export default class extends defineEvent({
   name: "messageCreate",
@@ -118,14 +118,24 @@ export default class extends defineEvent({
                 `Command "${commandName}" used by ${msg.author.username} in ${msg.channel.id}`,
               ),
             );
-            await command.execute(harmonix, msg, args);
-
-            // Log analytics event
-            logEvent('command_used', {
-              userId: msg.author.id,
-              guildId: msg.guildID,
-              commandName: command.name,
-            });
+            
+            // Log command usage
+            await logCommandUsed(msg.author.id, msg.guildID, command.name);
+            
+            try {
+              await command.execute(harmonix, msg, args);
+              // Log command success
+              await logCommandSuccess(msg.author.id, msg.guildID, command.name);
+            } catch (error) {
+              // Log command error
+              await logCommandError(
+                msg.author.id,
+                msg.guildID,
+                command.name,
+                error instanceof Error ? error.message : String(error)
+              );
+              throw error; // Re-throw to maintain existing error handling
+            }
           } else {
             consola.warn(
               colors.yellow(

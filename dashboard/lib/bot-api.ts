@@ -301,10 +301,22 @@ export async function updateUser(
 
 export interface AnalyticsData {
   totalCommands: number;
+  totalCommandsLast7Days: number;
+  totalCommandsLast30Days: number;
   topCommands: { name: string; count: number }[];
+  topCommandsLast7Days: { name: string; count: number }[];
   topUsers: { id: string; count: number }[];
+  topUsersLast7Days: { id: string; count: number }[];
   topGuilds: { id: string; count: number }[];
+  topGuildsLast7Days: { id: string; count: number }[];
   dailyUsage: { date: string; count: number }[];
+  dailyUsage30Days: { date: string; count: number }[];
+  hourlyUsageToday: { hour: number; count: number }[];
+  successfulCommands: number;
+  failedCommands: number;
+  successRate: number;
+  uniqueUsersLast7Days: number;
+  uniqueGuildsLast7Days: number;
 }
 
 export async function getAnalytics(): Promise<AnalyticsData | null> {

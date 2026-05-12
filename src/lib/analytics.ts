@@ -22,3 +22,28 @@ export async function logEvent(
     console.error('Failed to log analytics event:', error);
   }
 }
+
+export async function logCommandUsed(
+  userId: string,
+  guildId: string | undefined,
+  commandName: string
+) {
+  return logEvent('command_used', { userId, guildId, commandName });
+}
+
+export async function logCommandSuccess(
+  userId: string,
+  guildId: string | undefined,
+  commandName: string
+) {
+  return logEvent('command_success', { userId, guildId, commandName });
+}
+
+export async function logCommandError(
+  userId: string,
+  guildId: string | undefined,
+  commandName: string,
+  error: string
+) {
+  return logEvent('command_error', { userId, guildId, commandName, error });
+}

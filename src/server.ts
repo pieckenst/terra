@@ -1422,10 +1422,36 @@ export async function setupServer(harmonix: Harmonix) {
 
   apiServer.get("/api/analytics", async (request, reply) => {
     try {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      sevenDaysAgo.setHours(0, 0, 0, 0);
+
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      thirtyDaysAgo.setHours(0, 0, 0, 0);
+
+      // Total commands (all time)
       const totalCommands = await prisma.analyticsEvent.count({
         where: { eventName: 'command_used' },
       });
 
+      // Total commands in last 7 days
+      const totalCommandsLast7Days = await prisma.analyticsEvent.count({
+        where: {
+          eventName: 'command_used',
+          createdAt: { gte: sevenDaysAgo },
+        },
+      });
+
+      // Total commands in last 30 days
+      const totalCommandsLast30Days = await prisma.analyticsEvent.count({
+        where: {
+          eventName: 'command_used',
+          createdAt: { gte: thirtyDaysAgo },
+        },
+      });
+
+      // Top commands (all time)
       const topCommands = await prisma.analyticsEvent.groupBy({
         by: ['commandName'],
         _count: {
@@ -1437,9 +1463,29 @@ export async function setupServer(harmonix: Harmonix) {
             commandName: 'desc',
           },
         },
-        take: 5,
+        take: 10,
       });
 
+      // Top commands (last 7 days)
+      const topCommandsLast7Days = await prisma.analyticsEvent.groupBy({
+        by: ['commandName'],
+        _count: {
+          commandName: true,
+        },
+        where: {
+          eventName: 'command_used',
+          commandName: { not: null },
+          createdAt: { gte: sevenDaysAgo },
+        },
+        orderBy: {
+          _count: {
+            commandName: 'desc',
+          },
+        },
+        take: 10,
+      });
+
+      // Top users (all time)
       const topUsers = await prisma.analyticsEvent.groupBy({
         by: ['userId'],
         _count: {
@@ -1451,9 +1497,28 @@ export async function setupServer(harmonix: Harmonix) {
             userId: 'desc',
           },
         },
-        take: 5,
+        take: 10,
       });
 
+      // Top users (last 7 days)
+      const topUsersLast7Days = await prisma.analyticsEvent.groupBy({
+        by: ['userId'],
+        _count: {
+          userId: true,
+        },
+        where: {
+          eventName: 'command_used',
+          createdAt: { gte: sevenDaysAgo },
+        },
+        orderBy: {
+          _count: {
+            userId: 'desc',
+          },
+        },
+        take: 10,
+      });
+
+      // Top guilds (all time)
       const topGuilds = await prisma.analyticsEvent.groupBy({
         by: ['guildId'],
         _count: {
@@ -1465,48 +1530,137 @@ export async function setupServer(harmonix: Harmonix) {
             guildId: 'desc',
           },
         },
-        take: 5,
+        take: 10,
       });
 
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-      const dailyUsage = await prisma.analyticsEvent.groupBy({
-        by: ['createdAt'],
+      // Top guilds (last 7 days)
+      const topGuildsLast7Days = await prisma.analyticsEvent.groupBy({
+        by: ['guildId'],
         _count: {
-          _all: true,
+          guildId: true,
         },
         where: {
           eventName: 'command_used',
-          createdAt: {
-            gte: sevenDaysAgo,
-          },
+          guildId: { not: null },
+          createdAt: { gte: sevenDaysAgo },
         },
         orderBy: {
-          createdAt: 'asc',
+          _count: {
+            guildId: 'desc',
+          },
+        },
+        take: 10,
+      });
+
+      // Daily usage for last 30 days (properly grouped by date)
+      const dailyUsage30Days = [];
+      for (let i = 29; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        date.setHours(0, 0, 0, 0);
+        
+        const nextDate = new Date(date);
+        nextDate.setDate(nextDate.getDate() + 1);
+        
+        const count = await prisma.analyticsEvent.count({
+          where: {
+            eventName: 'command_used',
+            createdAt: {
+              gte: date,
+              lt: nextDate,
+            },
+          },
+        });
+        
+        dailyUsage30Days.push({
+          date: date.toISOString().split('T')[0],
+          count,
+        });
+      }
+
+      // Hourly usage for today
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      
+      const hourlyUsageToday = [];
+      for (let i = 0; i < 24; i++) {
+        const hourStart = new Date(todayStart);
+        hourStart.setHours(i, 0, 0, 0);
+        
+        const hourEnd = new Date(hourStart);
+        hourEnd.setHours(i + 1, 0, 0, 0);
+        
+        const count = await prisma.analyticsEvent.count({
+          where: {
+            eventName: 'command_used',
+            createdAt: {
+              gte: hourStart,
+              lt: hourEnd,
+            },
+          },
+        });
+        
+        hourlyUsageToday.push({
+          hour: i,
+          count,
+        });
+      }
+
+      // Command success/failure tracking
+      const successfulCommands = await prisma.analyticsEvent.count({
+        where: {
+          eventName: 'command_success',
+          createdAt: { gte: sevenDaysAgo },
         },
       });
 
-      // This is a simplified version. A real implementation might need to group by day part of the date.
-      const formattedDailyUsage = dailyUsage.map(d => ({
-        date: d.createdAt.toISOString().split('T')[0],
-        count: d._count._all
-      })).reduce((acc, curr) => {
-        const existing = acc.find(item => item.date === curr.date);
-        if (existing) {
-            existing.count += curr.count;
-        } else {
-            acc.push({ date: curr.date, count: curr.count });
-        }
-        return acc;
-      }, [] as { date: string; count: number }[]);
+      const failedCommands = await prisma.analyticsEvent.count({
+        where: {
+          eventName: 'command_error',
+          createdAt: { gte: sevenDaysAgo },
+        },
+      });
+
+      const successRate = successfulCommands + failedCommands > 0
+        ? (successfulCommands / (successfulCommands + failedCommands)) * 100
+        : 100;
+
+      // Unique users and guilds in last 7 days
+      const uniqueUsersLast7Days = await prisma.analyticsEvent.groupBy({
+        by: ['userId'],
+        where: {
+          eventName: 'command_used',
+          createdAt: { gte: sevenDaysAgo },
+        },
+      });
+
+      const uniqueGuildsLast7Days = await prisma.analyticsEvent.groupBy({
+        by: ['guildId'],
+        where: {
+          eventName: 'command_used',
+          guildId: { not: null },
+          createdAt: { gte: sevenDaysAgo },
+        },
+      });
 
       return reply.status(200).send({
         totalCommands,
-        topCommands: topCommands.map(c => ({ name: c.commandName, count: c._count.commandName })),
+        totalCommandsLast7Days,
+        totalCommandsLast30Days,
+        topCommands: topCommands.map(c => ({ name: c.commandName || 'unknown', count: c._count.commandName })),
+        topCommandsLast7Days: topCommandsLast7Days.map(c => ({ name: c.commandName || 'unknown', count: c._count.commandName })),
         topUsers: topUsers.map(u => ({ id: u.userId, count: u._count.userId })),
-        topGuilds: topGuilds.map(g => ({ id: g.guildId, count: g._count.guildId })),
-        dailyUsage: formattedDailyUsage,
+        topUsersLast7Days: topUsersLast7Days.map(u => ({ id: u.userId, count: u._count.userId })),
+        topGuilds: topGuilds.map(g => ({ id: g.guildId || 'unknown', count: g._count.guildId })),
+        topGuildsLast7Days: topGuildsLast7Days.map(g => ({ id: g.guildId || 'unknown', count: g._count.guildId })),
+        dailyUsage: dailyUsage30Days.slice(-7), // Last 7 days
+        dailyUsage30Days,
+        hourlyUsageToday,
+        successfulCommands,
+        failedCommands,
+        successRate: Math.round(successRate * 100) / 100,
+        uniqueUsersLast7Days: uniqueUsersLast7Days.length,
+        uniqueGuildsLast7Days: uniqueGuildsLast7Days.length,
       });
 
     } catch (error) {
