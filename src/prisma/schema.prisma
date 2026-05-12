@@ -5,7 +5,6 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")
 }
 
 model Guild {
@@ -41,8 +40,23 @@ model User {
   updatedAt     DateTime  @updatedAt
   accounts      Account[]
   sessions      Session[]
+  guilds        UserGuild[]
 
   @@index([discordId])
+}
+
+model UserGuild {
+  id        String   @id @default(cuid())
+  userId    String
+  guildId   String
+  permissions String?
+  owner     Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, guildId])
+  @@index([userId])
+  @@index([guildId])
 }
 
 model AnalyticsEvent {
@@ -86,4 +100,43 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+model FeatureFlag {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model GuildSettings {
+  guildId           String   @id
+  prefix            String?
+  welcomeChannelId  String?
+  welcomeMessage    String?
+  modLogChannelId   String?
+  autoRoleId        String?
+  disabledChannels  String // JSON array of channel IDs
+  updatedAt         DateTime @updatedAt
+}
+
+model BotLog {
+  id        Int      @id @default(autoincrement())
+  level     String
+  message   String
+  context   String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  actorId   String
+  action    String
+  target    String?
+  guildId   String?
+  metadata  String? // JSON
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }

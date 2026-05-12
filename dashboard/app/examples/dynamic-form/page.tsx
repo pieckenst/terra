@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
+import { LoginModal } from '@/components/ui/LoginModal';
 
 // Example model definitions
 const userModel = createFormModel('User', [
@@ -126,6 +127,11 @@ export default function DynamicFormExample() {
   const [apiData, setApiData] = useState<any>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [crudLoading, setCrudLoading] = useState(false);
+  // Auth state
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginError, setLoginError] = useState<string|null>(null);
+  const [authHeader, setAuthHeader] = useState<string|null>(null);
+  const [loginApiUrl, setLoginApiUrl] = useState('');
 
   // Load dynamic model from API URL
   const loadModelFromApi = async () => {
@@ -136,7 +142,14 @@ export default function DynamicFormExample() {
     setIsLoading(true);
     setError(null);
     try {
-      const resp = await fetch(apiUrl, { headers: { 'Accept': 'application/json' } });
+      const headers: Record<string, string> = { 'Accept': 'application/json' };
+      if (authHeader) headers['Authorization'] = authHeader;
+      const resp = await fetch(apiUrl, { headers });
+      if (resp.status === 401) {
+        setShowLogin(true);
+        setIsLoading(false);
+        return;
+      }
       if (!resp.ok) throw new Error(`Failed to fetch data: ${resp.status}`);
       const data = await resp.json();
       setApiData(data);
@@ -152,6 +165,82 @@ export default function DynamicFormExample() {
       setDynamicModel(null);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Handle login modal submission
+  const handleLogin = async (auth: { type: 'basic' | 'bearer', loginUrl?: string, username?: string, password?: string, token?: string }) => {
+    setLoginError(null);
+    try {
+      if (auth.type === 'bearer') {
+        if (auth.token) {
+          setAuthHeader('Bearer ' + auth.token);
+          setShowLogin(false);
+          setLoginError(null);
+          await loadModelFromApi();
+        }
+        return;
+      }
+      // Basic Auth flow
+      const basic = 'Basic ' + btoa(`${auth.username}:${auth.password}`);
+      if (auth.loginUrl) {
+        // Try multiple common login payloads
+        const loginPayloads = [
+          { username: auth.username, password: auth.password },
+          { login: auth.username, password: auth.password },
+          { user: auth.username, password: auth.password },
+          { username: auth.username, pass: auth.password },
+          { login: auth.username, pass: auth.password },
+          { user: auth.username, pass: auth.password },
+        ];
+        let token: string | null = null;
+        let lastStatus = 0, lastText = '';
+        for (const payload of loginPayloads) {
+          const resp = await fetch(auth.loginUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': basic },
+            body: JSON.stringify(payload)
+          });
+          lastStatus = resp.status;
+          if (!resp.ok) {
+            lastText = await resp.text();
+            continue;
+          }
+          // Try JSON token
+          let data: any = null;
+          try { data = await resp.json(); } catch { }
+          if (data && (data.token || data.access_token)) {
+            token = data.token || data.access_token;
+            break;
+          }
+          // Try plain text token
+          try {
+            if (!data) {
+              const text = await resp.text();
+              if (text && text.length > 10 && !text.startsWith('<')) { // crude check
+                token = text;
+                break;
+              }
+            }
+          } catch {}
+        }
+        if (token) {
+          setAuthHeader('Bearer ' + token);
+        } else {
+          if (lastStatus >= 400) {
+            setLoginError('Login failed: ' + lastStatus + (lastText ? ' - ' + lastText : ''));
+            return;
+          }
+          setAuthHeader(basic);
+        }
+      } else {
+        setAuthHeader(basic);
+      }
+      setShowLogin(false);
+      setLoginError(null);
+      await loadModelFromApi();
+    } catch (err: any) {
+      setLoginError(err.message || 'Login failed');
     }
   };
 
@@ -290,7 +379,14 @@ export default function DynamicFormExample() {
   };
 
   return (
-    <div className="container mx-auto py-8">
+    <>
+      <LoginModal
+        open={showLogin}
+        onClose={() => setShowLogin(false)}
+        onLogin={handleLogin}
+        error={loginError || undefined}
+      />
+      <div className="container mx-auto py-8">
       <h1 className="text-3xl font-bold mb-6">Dynamic Form Generator</h1>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
@@ -493,5 +589,6 @@ export default function DynamicFormExample() {
         </div>
       </Tabs>
     </div>
+    </>
   );
 }

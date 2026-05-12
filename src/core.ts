@@ -8,8 +8,8 @@ import Eris, {
 } from "eris";
 import { Collection } from "eris";
 import dotenv from "dotenv";
-import { resolve } from "path";
-import { readFileSync } from "fs";
+import { resolve as pathResolve, isAbsolute as pathIsAbsolute } from "path";
+import { readFileSync, existsSync } from "fs";
 import consola from "consola";
 import { colors } from "consola/utils";
 import { watch } from "chokidar";
@@ -33,7 +33,8 @@ import type { Harmonix } from "../discordkit/types/harmonixtypes";
 import { ApplicationCommand } from "eris";
 import { logError } from "../discordkit/utils/centralloggingfactory";
 import { exec } from "child_process";
-import { prisma } from "./lib/db";
+import { bus } from './lib/events';
+import { prisma } from './lib/db';
 import knex from "knex";
 import { setupServer as setupFastifyServer } from "./server";
 import {
@@ -53,11 +54,30 @@ async function setupServer(harmonix: Harmonix): Promise<void> {
 // Load configuration
 const loadConfig = Effect.tryPromise({
   try: async (): Promise<HarmonixOptions> => {
-    const configPath = resolve(process.cwd(), "config.json");
-    if (!configPath) {
-      consola.error(colors.red(`Config file not found at ${configPath}`));
-      throw new ConfigError(`Config file not found at ${configPath}`);
+    // Robust config path resolution
+    const candidates = [
+      pathResolve(__dirname, "config.json"), // Relative to this file (core.ts in src/)
+      pathResolve(process.cwd(), "config.json"), // Relative to cwd
+      pathResolve(process.cwd(), "src", "config.json"), // Relative to src/ subdirectory
+    ];
+
+    let configPath: string | null = null;
+    for (const candidate of candidates) {
+      try {
+        await import('fs').then(fs => fs.promises.access(candidate));
+        configPath = candidate;
+        break;
+      } catch {
+        // Try next candidate
+      }
     }
+
+    if (!configPath) {
+      const errorMsg = `Config file not found. Tried:\n${candidates.map(c => `  - ${c}`).join('\n')}`;
+      consola.error(colors.red(errorMsg));
+      throw new ConfigError(errorMsg);
+    }
+    
     consola.info(colors.yellow(` Loading configuration from: ${configPath}`));
     let configFile: string;
     try {
@@ -77,6 +97,22 @@ const loadConfig = Effect.tryPromise({
       );
       consola.error(colors.red(`Stack trace:\n${error.stack}`));
       throw new ConfigError(`Failed to parse config file: ${error.message}`);
+    }
+
+    // Resolve directory paths relative to config file location
+    const configDir = pathResolve(configPath, '..');
+    if (config.dirs) {
+      for (const [key, value] of Object.entries(config.dirs)) {
+        if (typeof value === 'string') {
+          // Convert relative paths to absolute paths based on config file location
+          if (!pathIsAbsolute(value)) {
+            config.dirs[key] = pathResolve(configDir, value);
+            if (config.debug) {
+              consola.debug(`Resolved ${key} directory: ${config.dirs[key]}`);
+            }
+          }
+        }
+      }
     }
 
     const requiredFields = [
@@ -148,10 +184,42 @@ const loadConfig = Effect.tryPromise({
   },
 });
 
+/** Load `.env` then `.env.local` (overrides) from `src/`, cwd, and `cwd/src`. */
+function loadEnvFiles(): void {
+  const dirs = [
+    path.resolve(__dirname),
+    path.resolve(process.cwd()),
+    path.join(process.cwd(), "src"),
+  ];
+  const seen = new Set<string>();
+  for (const dir of dirs) {
+    const base = path.resolve(dir);
+    if (seen.has(base)) continue;
+    seen.add(base);
+    const envFile = path.join(base, ".env");
+    const localFile = path.join(base, ".env.local");
+    if (existsSync(envFile)) {
+      dotenv.config({ path: envFile });
+    }
+    if (existsSync(localFile)) {
+      dotenv.config({ path: localFile, override: true });
+    }
+  }
+}
+
 // Load token from .env
 const loadToken = Effect.gen(function* (_) {
   yield* Effect.tryPromise({
-    try: async () => dotenv.config(),
+    try: async () => {
+      loadEnvFiles();
+      if (!process.env.NEXTAUTH_SECRET) {
+        consola.warn(
+          colors.yellow(
+            "NEXTAUTH_SECRET is not set in .env. Set it in src/.env (same value as dashboard) so API/WebSocket JWT auth works.",
+          ),
+        );
+      }
+    },
     catch: (error) =>
       new TokenError(
         `Failed to load .env: ${error instanceof Error ? error.message : String(error)}`,
@@ -169,29 +237,46 @@ const initDatabase = Effect.gen(function* (_) {
   const config = yield* _(loadConfig);
   if (config.featureFlags?.useDatabase === "prisma") {
     consola.info(colors.yellow("Using Prisma for database operations."));
-    yield* _(
-      Effect.tryPromise({
-        try: () =>
-          new Promise<void>((resolve, reject) => {
-                        exec("npx prisma migrate dev --name init --skip-generate", (error, stdout, stderr) => {
-              if (error) {
-                consola.error(
-                  colors.red(`Error running prisma migrate: ${error.message}`),
-                );
-                return reject(error);
-              }
-              if (stderr) {
-                // Prisma migrate often logs to stderr for non-error info
-                consola.info(colors.yellow(`Prisma migrate info: ${stderr}`));
-              }
-              consola.success(colors.green(`Prisma migrate output: ${stdout}`));
-              resolve();
-            });
-          }),
-        catch: (e) => new Error(`Prisma migration failed: ${e}`),
-      }),
-    );
-    return null; // Return null to satisfy the type signature
+    
+    try {
+      // Try to run migrations, but don't crash if they fail
+      yield* _(
+        Effect.tryPromise({
+          try: () =>
+            new Promise<void>((resolve, reject) => {
+              // Prisma 7.x needs to run from src/ directory where prisma.config.ts is located
+              const srcDir = __dirname;
+              exec("npx prisma migrate deploy", { cwd: srcDir }, (error, stdout, stderr) => {
+                if (error) {
+                  consola.warn(
+                    colors.yellow(`Prisma migration warning: ${error.message}`),
+                  );
+                  // Don't reject - allow bot to continue with existing schema
+                }
+                if (stderr) {
+                  consola.info(colors.cyan(`Prisma: ${stderr}`));
+                }
+                if (stdout) {
+                  consola.success(colors.green(`Prisma: ${stdout}`));
+                }
+                resolve(); // Always resolve - migrations are best-effort
+              });
+            }),
+          catch: (e) => {
+            consola.warn(
+              colors.yellow(`Prisma migration skipped (will use existing schema): ${e}`),
+            );
+            return null; // Return null to allow continuation
+          },
+        }),
+      );
+    } catch (error) {
+      consola.warn(
+        colors.yellow("Prisma initialization failed - bot will continue with existing database schema"),
+      );
+    }
+    
+    return null;
   }
   if (config.featureFlags?.useDatabase === "sqlite") {
     return knex({
@@ -550,7 +635,7 @@ function initializeManager(harmonix: Harmonix): void {
 async function scanFiles(harmonix: Harmonix, dir: string): Promise<string[]> {
   const pattern = "**/*.{js,ts}";
   const files = await globby(pattern, {
-    cwd: resolve(harmonix.options.dirs[dir]),
+    cwd: pathResolve(harmonix.options.dirs[dir]),
     absolute: true,
     deep: Infinity,
   });
@@ -779,6 +864,76 @@ async function loadCommands(harmonix: Harmonix): Promise<void> {
       ` Loaded ${loadedRegularCommands} regular commands and ${loadedSlashCommands} slash commands. Skipped ${skippedCommands} commands due to errors.`,
     ),
   );
+}
+
+/**
+ * Hot-load a single command from file without full reload.
+ */
+export async function loadCommandFromFile(harmonix: Harmonix, filePath: string): Promise<boolean> {
+  try {
+    const commandModule = await import(filePath);
+    let command: HarmonixCommand;
+
+    if (typeof commandModule.default === "function" && commandModule.default.build) {
+      command = commandModule.default.build();
+    } else if (typeof commandModule.default === "object" && "execute" in commandModule.default) {
+      command = commandModule.default;
+    } else {
+      throw new Error(`Invalid command structure in file: ${filePath}`);
+    }
+
+    // Check if command should be disabled
+    if (
+      harmonix.options.featureFlags?.disabledCommands.includes(command.name) ||
+      (harmonix.options.featureFlags?.betaCommands.includes(command.name) && !command.beta)
+    ) {
+      consola.info(colors.yellow(` Skipping disabled/non-beta command: ${command.name}`));
+      return false;
+    }
+
+    const relativePath = path.relative(harmonix.options.dirs.commands, filePath);
+    const folderPath = path.dirname(relativePath);
+    const folderName = folderPath === "." ? "main" : folderPath;
+
+    if (command.slashCommand) {
+      harmonix.slashCommands.set(command.name, command);
+      consola.info(colors.blueBright(`[${folderName}] `) + colors.green(`Hot-loaded slash command: ${command.name}`));
+    } else {
+      harmonix.commands.set(command.name, command);
+      consola.info(colors.blueBright(`[${folderName}] `) + colors.green(`Hot-loaded command: ${command.name}`));
+    }
+
+    bus.emitTyped('command:load', { commandName: command.name, category: command.category });
+    return true;
+  } catch (error) {
+    consola.error(colors.red(` Failed to hot-load command from ${filePath}:`), error);
+    return false;
+  }
+}
+
+/**
+ * Hot-unload a command by name.
+ */
+export function unloadCommand(harmonix: Harmonix, commandName: string): boolean {
+  const regularCmd = harmonix.commands.get(commandName);
+  const slashCmd = harmonix.slashCommands.get(commandName);
+
+  if (regularCmd) {
+    harmonix.commands.delete(commandName);
+    consola.info(colors.yellow(`Hot-unloaded command: ${commandName}`));
+    bus.emitTyped('command:unload', { commandName });
+    return true;
+  }
+
+  if (slashCmd) {
+    harmonix.slashCommands.delete(commandName);
+    consola.info(colors.yellow(`Hot-unloaded slash command: ${commandName}`));
+    bus.emitTyped('command:unload', { commandName });
+    return true;
+  }
+
+  consola.warn(colors.yellow(` Command not found for unload: ${commandName}`));
+  return false;
 }
 
 // Load events with Effect-based error handling
@@ -1012,6 +1167,46 @@ async function main() {
 
         // Launch the server
         await Effect.runPromise(Effect.tryPromise(() => setupServer(harmonix)));
+
+        // Subscribe to feature flag changes for hot command reload/unload
+        bus.onTyped('flags:changed', async (data) => {
+          consola.info(colors.cyan(' Feature flags changed, hot-reloading commands...'));
+          
+          const previousDisabled = new Set(harmonix.options.featureFlags?.disabledCommands || []);
+          const newFlags = data.flags as { disabledCommands?: string[]; betaCommands?: string[] };
+          const newDisabled = new Set(newFlags.disabledCommands || []);
+
+          // Commands that are newly disabled - unload them
+          for (const cmdName of newDisabled) {
+            if (!previousDisabled.has(cmdName)) {
+              consola.info(colors.yellow(` Unloading disabled command: ${cmdName}`));
+              unloadCommand(harmonix, cmdName);
+            }
+          }
+
+          // Commands that are re-enabled - load them
+          for (const cmdName of previousDisabled) {
+            if (!newDisabled.has(cmdName)) {
+              consola.info(colors.green(` Re-enabling command: ${cmdName}`));
+              // Find the file and reload
+              const files = await scanFiles(harmonix, 'commands');
+              const cmdFile = files.find(f => {
+                const basename = path.basename(f, '.ts');
+                return basename === cmdName;
+              });
+              if (cmdFile) {
+                await loadCommandFromFile(harmonix, cmdFile);
+              }
+            }
+          }
+
+          // Update the in-memory flags
+          harmonix.options.featureFlags = {
+            ...harmonix.options.featureFlags,
+            ...newFlags,
+          };
+          consola.success(colors.green(' Command hot-reload complete.'));
+        });
 
         // Set up raw WebSocket event handling for Erela.js
         harmonix.client.on("rawWS", (packet: any) => {

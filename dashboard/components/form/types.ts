@@ -1,5 +1,5 @@
 export type InputType = 'text' | 'number' | 'email' | 'password';
-export type FieldType = InputType | 'select' | 'checkbox' | 'date' | 'textarea';
+export type FieldType = InputType | 'select' | 'checkbox' | 'date' | 'textarea' | 'array' | 'object';
 
 export interface FieldOption {
   label: string;
@@ -22,6 +22,8 @@ export interface FieldConfig {
     maxLength?: number;
     message?: string;
   };
+  // For nested objects/arrays
+  subModel?: FormModel;
 }
 
 export interface FormModel {

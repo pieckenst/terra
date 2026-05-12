@@ -18,8 +18,24 @@ import Eris, {
   ModalSubmitInteraction,
 } from "eris";
 import { logError } from "../utils/centralloggingfactory";
+import { prisma } from "../../src/lib/db";
 
 const cooldowns = new Map<string, Map<string, number>>();
+
+// Cache for per-guild command settings: guildId -> Map<commandName, enabled>
+const guildCommandCache = new Map<string, Map<string, boolean>>();
+
+/**
+ * Invalidate cache for a specific guild or all guilds.
+ * Called when guildSettings:changed or commands:reload events fire.
+ */
+export function invalidateGuildCache(guildId?: string) {
+  if (guildId) {
+    guildCommandCache.delete(guildId);
+  } else {
+    guildCommandCache.clear();
+  }
+}
 
 export function defineCommand<T extends Record<string, any> = Record<string, any>>(
   config: HarmonixCommandConfig,
@@ -67,6 +83,34 @@ export function defineCommand<T extends Record<string, any> = Record<string, any
                 throw new Error(
                   "This command can only be used by the bot owner.",
                 );
+              }
+
+              // Per-guild command disable check
+              const guildId = "guildID" in message.channel ? (message.channel as GuildChannel).guild.id : null;
+              if (guildId) {
+                // Check cache first
+                if (!guildCommandCache.has(guildId)) {
+                  try {
+                    const settings = await prisma.commandSetting.findMany({
+                      where: { guildId },
+                      select: { commandName: true, enabled: true },
+                    });
+                    const cmdMap = new Map<string, boolean>();
+                    settings.forEach(s => cmdMap.set(s.commandName, s.enabled));
+                    guildCommandCache.set(guildId, cmdMap);
+                  } catch (error) {
+                    console.error(`Failed to load command settings for guild ${guildId}:`, error);
+                    guildCommandCache.set(guildId, new Map());
+                  }
+                }
+
+                const guildCmdSettings = guildCommandCache.get(guildId)!;
+                if (guildCmdSettings.has(config.name)) {
+                  const isEnabled = guildCmdSettings.get(config.name)!;
+                  if (!isEnabled) {
+                    throw new Error("This command is disabled in this server.");
+                  }
+                }
               }
 
               // Cooldown check

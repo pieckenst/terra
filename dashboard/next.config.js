@@ -11,7 +11,7 @@ let debug = {
 try {
   // Try to load the debug module
   debug = require('./debug');
-  e
+  
   // Log startup information
   debug.info('Next.js configuration loaded');
   debug.debug('Environment:', {
@@ -38,6 +38,11 @@ const nextConfig = {
   },
   experimental: {
     nodeMiddleware: true,
+    serverSourceMaps: true,
+    logging: {
+      level: 'verbose',
+      fullUrl: true
+    },
   },
   images: {
     remotePatterns: [
@@ -71,14 +76,6 @@ const nextConfig = {
   },
   sassOptions: {
     includePaths: [resolve(dashboardPath, 'styles')],
-  },
-  experimental: {
-    serverSourceMaps: true,
-    logging: {
-      level: 'verbose',
-      fullUrl: true
-    },
-    nodeMiddleware: true,
   },
 };
 

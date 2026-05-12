@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useForm, Controller, useWatch } from 'react-hook-form';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -60,9 +60,11 @@ export function DynamicForm({
   onModelError,
   apiConfig,
   onApiError,
+  isNested = false,
 }: DynamicFormProps & {
   apiConfig?: ApiConfig | ((data: any) => ApiConfig);
   onApiError?: (error: Error) => void;
+  isNested?: boolean;
 }) {
   // Component state
   const [isLoading, setIsLoading] = useState(true);
@@ -219,40 +221,99 @@ export function DynamicForm({
     fetchApiData();
   }, [apiConfig, initialData, onApiError]);
 
+  // Recursively process default values to handle nested objects and arrays
+  const processDefaultValues = useCallback((model: FormModel, data: any): any => {
+    if (!model || !model.fields) return data || {};
+
+    return model.fields.reduce((acc, field) => {
+      try {
+        // Get the value from data or field.defaultValue
+        let value = data?.[field.name] ?? field.defaultValue;
+
+        // Handle nested objects and arrays
+        if (field.type === 'object' && field.subModel) {
+          // For objects, recursively process the sub-model
+          value = processDefaultValues(field.subModel, value || {});
+        } 
+        // Handle arrays with sub-models (like routes, obsluzhivanies)
+        else if (field.type === 'array' && field.subModel) {
+          // If we have $values in the data, use that array, otherwise use the value directly if it's an array
+          const arrayData = value?.$values || (Array.isArray(value) ? value : []);
+          // Process each item in the array with the sub-model
+          value = arrayData.map((item: any) => {
+            // If item is a reference ($ref), try to resolve it from the data
+            if (item && typeof item === 'object' && '$ref' in item) {
+              const refId = item.$ref;
+              // Find the referenced object in the data (this is a simple implementation)
+              const findRef = (obj: any, id: string): any => {
+                if (!obj || typeof obj !== 'object') return null;
+                if (obj.$id === id) return obj;
+                if (Array.isArray(obj)) {
+                  for (const item of obj) {
+                    const found = findRef(item, id);
+                    if (found) return found;
+                  }
+                } else {
+                  for (const key in obj) {
+                    if (key === '$ref') continue; // Skip circular references
+                    const found = findRef(obj[key], id);
+                    if (found) return found;
+                  }
+                }
+                return null;
+              };
+              
+              const referencedItem = findRef(initialData, refId);
+              if (referencedItem) {
+                return processDefaultValues(field.subModel!, referencedItem);
+              }
+            }
+            return processDefaultValues(field.subModel!, item || {});
+          });
+        }
+        // Ensure we have a proper default value based on field type
+        else if (value === undefined || value === null) {
+          switch (field.type) {
+            case 'checkbox':
+              value = false;
+              break;
+            case 'number':
+              value = 0;
+              break;
+            case 'date':
+              value = '';
+              break;
+            case 'select':
+              value = field.options?.[0]?.value ?? '';
+              break;
+            default:
+              value = '';
+          }
+        }
+
+        return {
+          ...acc,
+          [field.name]: value
+        };
+      } catch (error) {
+        console.error(`Error processing field ${field.name}:`, error);
+        return acc;
+      }
+    }, {});
+  }, [initialData]);
+
   // Initialize form with default values
   const defaultValues = useMemo(() => {
     if (!formModel) return {};
-    
-    return formModel.fields.reduce((acc, field) => {
-      // Get the value from initialData or field.defaultValue
-      let value = initialData[field.name] ?? field.defaultValue;
-      
-      // Ensure we have a proper default value based on field type
-      if (value === undefined || value === null) {
-        switch (field.type) {
-          case 'checkbox':
-            value = false;
-            break;
-          case 'number':
-            value = 0;
-            break;
-          case 'date':
-            value = '';
-            break;
-          case 'select':
-            value = field.options?.[0]?.value ?? '';
-            break;
-          default:
-            value = '';
-        }
-      }
-      
-      return {
-        ...acc,
-        [field.name]: value
-      };
-    }, {} as Record<string, any>);
-  }, [formModel, initialData]);
+    try {
+      // Deep clone the initial data to avoid modifying the original
+      const initialDataCopy = JSON.parse(JSON.stringify(initialData || {}));
+      return processDefaultValues(formModel, initialDataCopy);
+    } catch (error) {
+      console.error('Error processing default values:', error);
+      return {};
+    }
+  }, [formModel, initialData, processDefaultValues]);
 
   type FormValues = Record<string, any>;
   
@@ -337,6 +398,80 @@ export function DynamicForm({
     };
 
     switch (fieldConfig.type) {
+      case 'object': {
+        // Render a nested sub-form for objects
+        if (!fieldConfig.subModel) return <div className="text-muted-foreground">No sub-model</div>;
+        // Pass nested value as initialData
+        return (
+          <div className="border rounded p-4 bg-muted/30 mt-2">
+            <div className="font-semibold mb-2">{fieldConfig.label}</div>
+            <DynamicForm
+              model={fieldConfig.subModel}
+              operation={operation}
+              initialData={value || {}}
+              onSubmit={(subData) => field.onChange(subData)}
+              submitButtonText="Save"
+              onCancel={undefined}
+              isNested={true}
+            />
+          </div>
+        );
+      }
+      case 'array': {
+        // Render a list of sub-forms for arrays
+        if (!fieldConfig.subModel) return <div className="text-muted-foreground">No sub-model</div>;
+        const items: any[] = Array.isArray(value) ? value : [];
+        const handleItemChange = (idx: number, newItem: any) => {
+          const updated = [...items];
+          updated[idx] = newItem;
+          field.onChange(updated);
+        };
+        const handleAdd = () => {
+          field.onChange([...(items || []), {}]);
+        };
+        const handleRemove = (idx: number) => {
+          const updated = items.slice();
+          updated.splice(idx, 1);
+          field.onChange(updated);
+        };
+        return (
+          <div className="border rounded p-4 bg-muted/30 mt-2">
+            <div className="font-semibold mb-2 flex items-center justify-between">
+              {fieldConfig.label}
+              <Button type="button" size="sm" variant="outline" onClick={handleAdd} disabled={isReadOnly}>
+                Add Item
+              </Button>
+            </div>
+            {items.length === 0 && (
+              <div className="text-muted-foreground italic">No items</div>
+            )}
+            {items.map((item, idx) => (
+              <div key={idx} className="mb-4 border rounded p-3 bg-background relative">
+                <DynamicForm
+                  model={fieldConfig.subModel as FormModel}
+                  operation={operation}
+                  initialData={item}
+                  onSubmit={(subData) => handleItemChange(idx, subData)}
+                  submitButtonText="Save"
+                  onCancel={undefined}
+                  isNested={true}
+                />
+                {!isReadOnly && (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="absolute top-2 right-2"
+                    onClick={() => handleRemove(idx)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        );
+      }
       case 'select': {
         const [showHelp, setShowHelp] = useState(false);
         const containerRef = useRef<HTMLDivElement>(null);
@@ -537,6 +672,70 @@ export function DynamicForm({
     }
   };
 
+  // Render only the form fields if this is a nested form (no <form> tag)
+  if (isNested) {
+    return (
+      <div className="space-y-4">
+        {formModel.fields.map((fieldConfig) => (
+          <div key={fieldConfig.name} className="space-y-2">
+            <Label htmlFor={fieldConfig.name}>
+              {fieldConfig.label}
+              {fieldConfig.required && <span className="text-destructive ml-1">*</span>}
+            </Label>
+            <Controller
+              name={fieldConfig.name as any}
+              control={control}
+              rules={{
+                required: fieldConfig.required ? `${fieldConfig.label} is required` : false,
+                ...(fieldConfig.validation?.pattern && {
+                  pattern: {
+                    value: new RegExp(fieldConfig.validation.pattern),
+                    message: fieldConfig.validation.message || 'Invalid format',
+                  },
+                }),
+                ...(fieldConfig.validation?.min && {
+                  min: {
+                    value: fieldConfig.validation.min,
+                    message: `Minimum value is ${fieldConfig.validation.min}`,
+                  },
+                }),
+                ...(fieldConfig.validation?.max && {
+                  max: {
+                    value: fieldConfig.validation.max,
+                    message: `Maximum value is ${fieldConfig.validation.max}`,
+                  },
+                }),
+                ...(fieldConfig.validation?.minLength && {
+                  minLength: {
+                    value: fieldConfig.validation.minLength,
+                    message: `Minimum length is ${fieldConfig.validation.minLength} characters`,
+                  },
+                }),
+                ...(fieldConfig.validation?.maxLength && {
+                  maxLength: {
+                    value: fieldConfig.validation.maxLength,
+                    message: `Maximum length is ${fieldConfig.validation.maxLength} characters`,
+                  },
+                }),
+              }}
+              render={({ field }) => (
+                <div className="space-y-1">
+                  {renderField(field, fieldConfig.name)}
+                  {errors[fieldConfig.name] && (
+                    <p className="text-sm font-medium text-destructive">
+                      {errors[fieldConfig.name]?.message as string}
+                    </p>
+                  )}
+                </div>
+              )}
+            />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Top-level form
   return (
     <form onSubmit={handleFormSubmit(handleSubmit)} className="space-y-6">
       <div className="space-y-4">

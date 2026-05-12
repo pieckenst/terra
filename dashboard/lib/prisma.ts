@@ -1,14 +1,21 @@
-import { PrismaClient } from '../generated/prisma'
+import { PrismaClient } from "../generated/prisma";
+import { PrismaLibSql } from "@prisma/adapter-libsql";
+
 declare global {
-  // allow global `var` declarations
   // eslint-disable-next-line no-var
   var prisma: PrismaClient | undefined;
 }
 
-export const prisma =
-  global.prisma ||
-  new PrismaClient();
+const adapter = new PrismaLibSql({
+  url: "file:../src/dev.db",
+});
 
-if (process.env.NODE_ENV !== 'production') {
+export const prisma =
+  global.prisma ??
+  new PrismaClient({
+    adapter,
+  });
+
+if (process.env.NODE_ENV !== "production") {
   global.prisma = prisma;
 }

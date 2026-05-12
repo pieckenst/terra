@@ -7,13 +7,22 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
-import { getUserProfile, UserProfile } from '@/lib/bot-api';
+import { getUserProfile, UserProfile, getMutualServers, MutualServersResponse } from '@/lib/bot-api';
+import {
+  defaultUserAvatarUrl,
+  discordSnowflakeToDate,
+  formatDiscordHandle,
+  guildIconUrl,
+  nitroLabel,
+  userAvatarUrl,
+} from '@/lib/discord-display';
 import { signIn } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 
 export default function ProfilePage() {
   const { data: session, status } = useSession();
   const [userData, setUserData] = useState<UserProfile | null>(null);
+  const [mutualServersData, setMutualServersData] = useState<MutualServersResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -29,6 +38,26 @@ export default function ProfilePage() {
           
           if (data) {
             setUserData(data);
+            
+            // Fetch mutual servers if we have a discord user ID
+            const discordId = data.discordUserId || session?.user?.discordId;
+            console.log('[PROFILE] Fetching mutual servers for discordId:', discordId);
+            console.log('[PROFILE] Data discordUserId:', data.discordUserId);
+            console.log('[PROFILE] Session discordId:', session?.user?.discordId);
+            
+            if (discordId) {
+              try {
+                const mutualData = await getMutualServers(discordId);
+                console.log('[PROFILE] Mutual servers response:', mutualData);
+                if (mutualData) {
+                  setMutualServersData(mutualData);
+                }
+              } catch (mutualError) {
+                console.error('Failed to fetch mutual servers:', mutualError);
+              }
+            } else {
+              console.warn('[PROFILE] No discordId available for mutual servers lookup');
+            }
           }
           
           // Handle API errors gracefully
@@ -43,20 +72,31 @@ export default function ProfilePage() {
           }
         } catch (error) {
           console.error('Failed to fetch user data:', error);
-            // Set a minimal user data object to prevent UI errors
-            const fallbackName = session.user.name || 'User';
-            setUserData({
-              id: session.user.id,
-              username: fallbackName,
-              discriminator: '',
-              avatar: session.user.image || null,
-              email: session.user.email || null,
-              isAdmin: false,
-              isBlocked: false,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              guilds: []
-            } as UserProfile);
+          // Set a minimal user data object to prevent UI errors
+          const fallbackName = session.user.name || 'User';
+          const userId = session.user.id || '';
+          
+          // Construct default avatar from user ID
+          let fallbackAvatar = session.user.image;
+          if (!fallbackAvatar && userId) {
+            const avatarIndex = Number(BigInt(userId) >> BigInt(22)) % 6;
+            fallbackAvatar = `https://cdn.discordapp.com/embed/avatars/${avatarIndex}.png`;
+          }
+          
+          setUserData({
+            id: session.user.id,
+            discordUserId: session.user.discordId ?? null,
+            username: fallbackName,
+            discriminator: '0',
+            globalName: session.user.name || null,
+            avatar: fallbackAvatar || null,
+            email: session.user.email || null,
+            isAdmin: false,
+            isBlocked: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            guilds: [],
+          } as UserProfile);
         } finally {
           setIsLoading(false);
         }
@@ -277,6 +317,23 @@ export default function ProfilePage() {
     });
   };
 
+  const discordId = userData.discordUserId || session?.user?.discordId || '';
+  const { displayName, handle, showLegacyTag } = formatDiscordHandle(
+    userData.username,
+    userData.discriminator,
+    userData.globalName
+  );
+  const profileAvatarSrc = discordId
+    ? userAvatarUrl(
+        discordId,
+        userData.avatarHash ?? userData.avatar,
+        userData.discriminator,
+        256
+      )
+    : userData.avatar || '';
+  const discordApproxJoin = discordId ? discordSnowflakeToDate(discordId) : null;
+  const nitro = nitroLabel(userData.premiumType);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -294,30 +351,28 @@ export default function ProfilePage() {
             <CardContent className="pt-6">
               <div className="flex flex-col items-center space-y-4">
                 <Avatar className="h-24 w-24">
-                  <AvatarImage 
-                    src={
-                      userData.avatar 
-                        ? userData.avatar.startsWith('http')
-                          ? userData.avatar // Use as-is if it's already a full URL
-                          : `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png`
-                        : `https://cdn.discordapp.com/embed/avatars/${Number(userData.discriminator || '0') % 5}.png`
-                    } 
-                    alt={userData.username || 'User'}
+                  <AvatarImage
+                    src={profileAvatarSrc}
+                    alt={displayName}
                     onError={(e) => {
-                      // If the image fails to load, fall back to the default avatar
                       const target = e.target as HTMLImageElement;
-                      target.src = `https://cdn.discordapp.com/embed/avatars/${Number(userData.discriminator || '0') % 5}.png`;
+                      if (discordId) {
+                        target.src = defaultUserAvatarUrl(discordId, userData.discriminator);
+                      }
                     }}
                   />
                   <AvatarFallback>
-                    {userData?.username?.slice(0, 2).toUpperCase() || 'US'}
+                    {displayName.slice(0, 2).toUpperCase() || 'US'}
                   </AvatarFallback>
                 </Avatar>
-                <div className="text-center">
-                  <h3 className="text-lg font-medium">
-                    {userData.username}
-                    <span className="text-muted-foreground">#{userData.discriminator}</span>
-                  </h3>
+                <div className="text-center space-y-1">
+                  <h3 className="text-lg font-medium leading-tight">{displayName}</h3>
+                  <p className="text-sm text-muted-foreground">{handle}</p>
+                  {showLegacyTag && (
+                    <p className="text-xs text-muted-foreground">
+                      Classic Discord tag (four-digit discriminator).
+                    </p>
+                  )}
                   <p className="text-sm text-muted-foreground">{userData.email}</p>
                 </div>
                 <div className="flex flex-wrap justify-center gap-2">
@@ -346,17 +401,12 @@ export default function ProfilePage() {
                 <p className="text-sm font-mono">{userData.id}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Discord ID</p>
-                <p className="text-sm font-mono">
-                  {session?.user?.discordId || 'N/A'}
-                </p>
+                <p className="text-sm font-medium text-muted-foreground">Discord user ID</p>
+                <p className="text-sm font-mono break-all">{discordId || 'N/A'}</p>
               </div>
               <div className="pt-2 border-t border-gray-200 dark:border-gray-800">
-                <p className="text-sm font-medium text-muted-foreground">Discord Username</p>
-                <p className="text-sm">
-                  {userData.username}
-                  <span className="text-muted-foreground">#{userData.discriminator}</span>
-                </p>
+                <p className="text-sm font-medium text-muted-foreground">Discord handle</p>
+                <p className="text-sm">{handle}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Email</p>
@@ -370,19 +420,92 @@ export default function ProfilePage() {
                 <p className="text-sm font-medium text-muted-foreground">Last Updated</p>
                 <p className="text-sm">{formatDate(userData.updatedAt)}</p>
               </div>
+              {discordApproxJoin && (
+                <div className="pt-2 border-t border-gray-200 dark:border-gray-800">
+                  <p className="text-sm font-medium text-muted-foreground">Discord account ~since</p>
+                  <p className="text-sm">
+                    {formatDate(discordApproxJoin.toISOString())}
+                    <span className="block text-xs text-muted-foreground mt-0.5">
+                      Estimated from your Discord ID (snowflake), not an exact “joined Discord” date.
+                    </span>
+                  </p>
+                </div>
+              )}
+              {(userData.verified != null ||
+                userData.mfaEnabled != null ||
+                nitro ||
+                userData.locale) && (
+                <div className="pt-2 border-t border-gray-200 dark:border-gray-800 space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">Discord account</p>
+                  <div className="flex flex-wrap gap-2">
+                    {userData.verified === true && (
+                      <Badge variant="secondary" className="text-xs">
+                        Verified email
+                      </Badge>
+                    )}
+                    {userData.mfaEnabled === true && (
+                      <Badge variant="secondary" className="text-xs">
+                        2FA on
+                      </Badge>
+                    )}
+                    {nitro && (
+                      <Badge variant="secondary" className="text-xs">
+                        {nitro}
+                      </Badge>
+                    )}
+                    {userData.locale && (
+                      <Badge variant="outline" className="text-xs font-normal">
+                        {userData.locale}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              )}
+              {mutualServersData && mutualServersData.mutualServers.length > 0 && (
+                <div className="pt-2 border-t border-gray-200 dark:border-gray-800">
+                  <p className="text-sm font-medium text-muted-foreground">Mutual Servers with Bot</p>
+                  <div className="mt-1 space-y-1">
+                    {mutualServersData.mutualServers.slice(0, 3).map((server) => (
+                      <div key={server.id} className="flex items-center space-x-2">
+                        {server.iconUrl && (
+                          <img
+                            src={server.iconUrl}
+                            alt=""
+                            className="h-4 w-4 rounded-full object-cover shrink-0 bg-muted"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.visibility = 'hidden';
+                            }}
+                          />
+                        )}
+                        <span className="text-sm truncate flex-1">{server.name}</span>
+                      </div>
+                    ))}
+                    {mutualServersData.mutualServers.length > 3 && (
+                      <p className="text-xs text-muted-foreground">
+                        +{mutualServersData.mutualServers.length - 3} more
+                      </p>
+                    )}
+                    <div className="mt-2 p-2 bg-green-50 dark:bg-green-900/20 rounded">
+                      <p className="text-xs text-green-700 dark:text-green-400 font-medium">
+                        ✓ {mutualServersData.totalMutualServers} of your {mutualServersData.totalUserGuilds} servers have the bot
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
               {userData.guilds && userData.guilds.length > 0 && (
                 <div className="pt-2 border-t border-gray-200 dark:border-gray-800">
-                  <p className="text-sm font-medium text-muted-foreground">Mutual Servers</p>
+                  <p className="text-sm font-medium text-muted-foreground">Your Guilds from Session</p>
                   <div className="mt-1 space-y-1">
                     {userData.guilds.slice(0, 3).map((guild) => (
                       <div key={guild.id} className="flex items-center space-x-2">
-                        {guild.icon && (
+                        {(guild.iconUrl || guildIconUrl(guild.id, guild.icon, 32)) && (
                           <img
-                            src={`https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=32`}
-                            alt={guild.name}
-                            className="h-4 w-4 rounded-full"
+                            src={guild.iconUrl || guildIconUrl(guild.id, guild.icon, 32) || ''}
+                            alt=""
+                            className="h-4 w-4 rounded-full object-cover shrink-0 bg-muted"
                             onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = 'none';
+                              (e.target as HTMLImageElement).style.visibility = 'hidden';
                             }}
                           />
                         )}
@@ -411,69 +534,105 @@ export default function ProfilePage() {
             <CardHeader>
               <CardTitle>Your Servers</CardTitle>
               <CardDescription>
-                Servers where you have administrator permissions
+                Guilds from your Discord session. Servers where the bot is also present are highlighted.
+                {mutualServersData && (
+                  <span className="block mt-1 text-sm">
+                    <span className="font-medium text-primary">{mutualServersData.totalMutualServers} mutual servers</span> with the bot
+                  </span>
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {userData.guilds && userData.guilds.length > 0 ? (
                 <div className="grid gap-4 md:grid-cols-2">
-                  {userData.guilds.map((guild) => (
-                    <div 
-                      key={guild.id} 
-                      className="flex items-start space-x-4 p-3 border rounded-lg hover:bg-accent/50 transition-colors"
-                    >
-                      <Avatar className="h-12 w-12 mt-1">
-                        {guild.icon ? (
-                          <AvatarImage 
-                            src={`https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png`} 
-                            alt={guild.name}
-                            className="object-cover"
-                          />
-                        ) : (
-                          <AvatarFallback className="bg-muted">
-                            {guild.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                  {userData.guilds.map((guild) => {
+                    // Check if this is a mutual server
+                    const isMutual = mutualServersData?.mutualServers.some(
+                      (ms) => ms.id === guild.id
+                    );
+                    
+                    return (
+                      <div 
+                        key={guild.id} 
+                        className={`flex items-start space-x-4 p-3 border rounded-lg transition-colors ${
+                          isMutual 
+                            ? 'bg-primary/5 border-primary/30 hover:bg-primary/10' 
+                            : 'hover:bg-accent/50'
+                        }`}
+                      >
+                        <Avatar className="h-12 w-12 mt-1 rounded-xl">
+                          {guild.iconUrl || guild.icon ? (
+                            <AvatarImage
+                              src={guild.iconUrl || guildIconUrl(guild.id, guild.icon, 128) || ''}
+                              alt=""
+                              className="object-cover"
+                              onError={(e) => {
+                                const el = e.target as HTMLImageElement;
+                                el.src = '';
+                                el.style.display = 'none';
+                              }}
+                            />
+                          ) : null}
+                          <AvatarFallback className="rounded-xl bg-muted text-xs font-medium">
+                            {guild.name
+                              .split(/\s+/)
+                              .filter(Boolean)
+                              .slice(0, 2)
+                              .map((n) => n[0])
+                              .join('')
+                              .toUpperCase() || '?'}
                           </AvatarFallback>
-                        )}
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <h4 className="font-medium truncate">{guild.name}</h4>
-                          {guild.owner && (
-                            <Badge variant="outline" className="ml-2">
-                              Owner
-                            </Badge>
-                          )}
-                        </div>
-                        
-                        <div className="mt-1 space-y-1">
-                          <div className="flex items-center text-sm text-muted-foreground">
-                            <span className="truncate">
-                              {guild.permissions_new || 'Standard Permissions'}
-                            </span>
-                          </div>
-                          
-                          {guild.features && guild.features.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {guild.features.slice(0, 3).map((feature) => (
-                                <Badge 
-                                  key={feature} 
-                                  variant="secondary" 
-                                  className="text-xs capitalize"
-                                >
-                                  {feature.replace(/_/g, ' ').toLowerCase()}
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-medium truncate">{guild.name}</h4>
+                            <div className="flex items-center gap-2 ml-2">
+                              {guild.owner && (
+                                <Badge variant="outline" className="shrink-0">
+                                  Owner
                                 </Badge>
-                              ))}
-                              {guild.features.length > 3 && (
-                                <Badge variant="outline" className="text-xs">
-                                  +{guild.features.length - 3} more
+                              )}
+                              {isMutual && (
+                                <Badge variant="default" className="shrink-0 bg-green-600 hover:bg-green-700">
+                                  <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                  </svg>
+                                  Bot
                                 </Badge>
                               )}
                             </div>
-                          )}
+                          </div>
+                          
+                          <div className="mt-1 space-y-1">
+                            <div className="flex items-center text-sm text-muted-foreground">
+                              <span className="truncate">
+                                {guild.permissions_new || 'Standard Permissions'}
+                              </span>
+                            </div>
+                            
+                            {guild.features && guild.features.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {guild.features.slice(0, 3).map((feature) => (
+                                  <Badge 
+                                    key={feature} 
+                                    variant="secondary" 
+                                    className="text-xs capitalize"
+                                  >
+                                    {feature.replace(/_/g, ' ').toLowerCase()}
+                                  </Badge>
+                                ))}
+                                {guild.features.length > 3 && (
+                                  <Badge variant="outline" className="text-xs">
+                                    +{guild.features.length - 3} more
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="text-center py-8">

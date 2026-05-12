@@ -6,11 +6,16 @@ declare module 'next-auth' {
       id: string;
       isAdmin: boolean;
       isBlocked: boolean;
+      discordId?: string | null;
+      role?: number;
     } & DefaultSession['user'];
+    accessToken?: string;
   }
 
   interface User {
     isAdmin: boolean;
     isBlocked: boolean;
+    discordId?: string | null;
+    role?: number;
   }
 }

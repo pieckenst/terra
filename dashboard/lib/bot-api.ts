@@ -1,4 +1,31 @@
-const API_BASE_URL = 'http://localhost:3001/api';
+import { clearBotAuthTokenCache, getBotAuthToken } from './bot-auth-token';
+
+const API_ROOT = process.env.NEXT_PUBLIC_BOT_API_URL || 'http://localhost:3001';
+const API_BASE_URL = `${API_ROOT}/api`;
+
+async function botFetchAuth(path: string, init: RequestInit = {}): Promise<Response> {
+  const url = `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+  const send = async () => {
+    const headers = new Headers(init.headers);
+    const token = await getBotAuthToken();
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+    return fetch(url, {
+      ...init,
+      headers,
+      credentials: 'include',
+      cache: init.cache ?? 'no-store'
+    });
+  };
+
+  let res = await send();
+  if (res.status === 401) {
+    clearBotAuthTokenCache();
+    res = await send();
+  }
+  return res;
+}
 
 export interface Server {
   id: string;
@@ -149,9 +176,8 @@ export async function restartBot(): Promise<{ success: boolean; message?: string
 export async function updateFeatureFlags(
   flags: FeatureFlags
 ): Promise<{ success: boolean; message?: string }> {
-  const url = `${API_BASE_URL}/featureflags`;
   try {
-    const response = await fetch(url, {
+    const response = await botFetchAuth('/featureflags', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -264,23 +290,53 @@ export async function getAnalytics(): Promise<AnalyticsData | null> {
 
 export interface UserProfile {
   id: string;
+  /** Discord snowflake when linked */
+  discordUserId?: string | null;
   username: string;
   discriminator: string;
+  globalName?: string | null;
   avatar: string | null;
+  avatarHash?: string | null;
   email: string;
   isAdmin: boolean;
   isBlocked: boolean;
   createdAt: string;
   updatedAt: string;
+  premiumType?: number | null;
+  verified?: boolean | null;
+  locale?: string | null;
+  mfaEnabled?: boolean | null;
   guilds: Array<{
     id: string;
     name: string;
+    /** Raw hash from Discord, or null if no icon */
     icon: string | null;
+    /** Resolved CDN URL (preferred for img src) */
+    iconUrl?: string | null;
     owner: boolean;
     permissions: number;
     features: string[];
     permissions_new: string;
+    hasBot?: boolean;
+    canManage?: boolean;
   }>;
+}
+
+export interface MutualServer {
+  id: string;
+  name: string;
+  iconUrl: string | null;
+  memberCount: number;
+  isOwner: boolean;
+  hasBot: boolean;
+}
+
+export interface MutualServersResponse {
+  userId: string;
+  mutualServers: MutualServer[];
+  totalMutualServers: number;
+  totalUserGuilds: number;
+  totalBotGuilds: number;
 }
 
 export interface BotStats {
@@ -368,10 +424,30 @@ export async function getUserProfile(
     if (!response.ok) {
       // Handle 401 Unauthorized
       if (response.status === 401) {
-        return { 
-          data: null, 
-          error: 'Authentication required. Please sign in again.' 
-        };
+        // Try to parse error response to check for requiresReauth flag
+        try {
+          const errorData = await response.json();
+          if (errorData.requiresReauth) {
+            // Redirect to login to force re-authentication
+            if (typeof window !== 'undefined') {
+              window.location.href = '/login?error=session_expired';
+            }
+            return { 
+              data: null, 
+              error: errorData.details || 'Your Discord session has expired. Please re-authenticate.',
+              requiresReauth: true
+            };
+          }
+          return { 
+            data: null, 
+            error: errorData.details || 'Authentication required. Please sign in again.' 
+          };
+        } catch {
+          return { 
+            data: null, 
+            error: 'Authentication required. Please sign in again.' 
+          };
+        }
       }
       
       // Try to parse error response
@@ -403,16 +479,26 @@ export async function getUserProfile(
         data.discriminator = session.user.discriminator;
       }
       
-      // If avatar is missing, try to get it from session or construct from available data
+      // If avatar is missing or empty, construct it from session or fallback
       if (!data.avatar || data.avatar === '') {
         // Try session image first
         if (session?.user?.image) {
           data.avatar = session.user.image;
         } 
-        // Fallback to default Discord avatar based on discriminator
-        else if (data.discriminator) {
-          const defaultAvatarIndex = parseInt(data.discriminator) % 5;
-          data.avatar = `https://cdn.discordapp.com/embed/avatars/${defaultAvatarIndex}.png`;
+        // Fallback to default Discord avatar based on user ID or discriminator
+        else {
+          const snowflake = data.discordUserId || session?.user?.discordId;
+          const discriminator = data.discriminator || '0';
+          if (snowflake && /^\d{5,}$/.test(String(snowflake))) {
+            const sid = String(snowflake);
+            if (discriminator === '0') {
+              const avatarIndex = Number(BigInt(sid) >> BigInt(22)) % 6;
+              data.avatar = `https://cdn.discordapp.com/embed/avatars/${avatarIndex}.png`;
+            } else {
+              const avatarIndex = parseInt(discriminator, 10) % 5;
+              data.avatar = `https://cdn.discordapp.com/embed/avatars/${avatarIndex}.png`;
+            }
+          }
         }
       }
       
@@ -488,6 +574,45 @@ export async function getStats(): Promise<BotStats | null> {
   }
 }
 
+export async function getMutualServers(
+  userId: string
+): Promise<MutualServersResponse | null> {
+  const url = `${API_BASE_URL}/users/${userId}/mutual-servers`;
+  console.log('[BOT-API] Fetching mutual servers from:', url);
+  try {
+    const response = await fetch(url, { cache: 'no-store' });
+    console.log('[BOT-API] Mutual servers response status:', response.status);
+    
+    if (!response.ok) {
+      // Handle 401 Unauthorized with requiresReauth flag
+      if (response.status === 401) {
+        try {
+          const errorData = await response.json();
+          if (errorData.requiresReauth) {
+            console.warn('[BOT-API] Discord session expired, redirecting to login');
+            // Redirect to login to force re-authentication
+            if (typeof window !== 'undefined') {
+              window.location.href = '/login?error=session_expired';
+            }
+            return null;
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+      console.error('Failed to fetch mutual servers:', response.statusText);
+      return null;
+    }
+    
+    const data = await response.json();
+    console.log('[BOT-API] Mutual servers data:', data);
+    return data;
+  } catch (error) {
+    console.error('An error occurred while fetching mutual servers:', error);
+    return null;
+  }
+}
+
 export async function updateServerCommandStatus(
   serverId: string,
   commandName: string,
@@ -511,4 +636,210 @@ export async function updateServerCommandStatus(
     console.error('An error occurred while updating command status:', error);
     return { success: false };
   }
+}
+
+// Guild Settings
+export interface GuildSettings {
+  guildId: string;
+  prefix?: string;
+  welcomeChannelId?: string;
+  welcomeMessage?: string;
+  modLogChannelId?: string;
+  autoRoleId?: string;
+  disabledChannels?: string;
+  updatedAt?: string;
+}
+
+export async function getGuildSettings(serverId: string): Promise<GuildSettings | null> {
+  const url = `${API_BASE_URL}/servers/${serverId}/settings`;
+  try {
+    const response = await fetch(url, { cache: 'no-store', credentials: 'include' });
+    if (!response.ok) {
+      console.error('Failed to fetch guild settings:', response.statusText);
+      return null;
+    }
+    return response.json();
+  } catch (error) {
+    console.error('An error occurred while fetching guild settings:', error);
+    return null;
+  }
+}
+
+export async function updateGuildSettings(
+  serverId: string,
+  settings: Partial<GuildSettings>
+): Promise<{ success: boolean; data?: GuildSettings; error?: string }> {
+  try {
+    const response = await botFetchAuth(`/servers/${serverId}/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    });
+    if (!response.ok) {
+      let message = response.statusText;
+      try {
+        const errBody = (await response.json()) as { error?: string };
+        if (errBody?.error) message = errBody.error;
+      } catch {
+        /* ignore */
+      }
+      console.error('Failed to update guild settings:', message);
+      return { success: false, error: message };
+    }
+    const data = await response.json();
+    return { success: true, data };
+  } catch (error) {
+    console.error('An error occurred while updating guild settings:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+  }
+}
+
+// Moderation Actions
+export async function kickMember(
+  serverId: string,
+  userId: string,
+  reason?: string
+): Promise<{ success: boolean }> {
+  try {
+    const response = await botFetchAuth(`/servers/${serverId}/moderation/kick`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, reason }),
+    });
+    if (!response.ok) {
+      console.error('Failed to kick member:', response.statusText);
+      return { success: false };
+    }
+    return response.json();
+  } catch (error) {
+    console.error('An error occurred while kicking member:', error);
+    return { success: false };
+  }
+}
+
+export async function banMember(
+  serverId: string,
+  userId: string,
+  deleteMessageDays?: number,
+  reason?: string
+): Promise<{ success: boolean }> {
+  try {
+    const response = await botFetchAuth(`/servers/${serverId}/moderation/ban`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, deleteMessageDays, reason }),
+    });
+    if (!response.ok) {
+      console.error('Failed to ban member:', response.statusText);
+      return { success: false };
+    }
+    return response.json();
+  } catch (error) {
+    console.error('An error occurred while banning member:', error);
+    return { success: false };
+  }
+}
+
+export async function timeoutMember(
+  serverId: string,
+  userId: string,
+  seconds: number,
+  reason?: string
+): Promise<{ success: boolean }> {
+  try {
+    const response = await botFetchAuth(`/servers/${serverId}/moderation/timeout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, seconds, reason }),
+    });
+    if (!response.ok) {
+      console.error('Failed to timeout member:', response.statusText);
+      return { success: false };
+    }
+    return response.json();
+  } catch (error) {
+    console.error('An error occurred while timing out member:', error);
+    return { success: false };
+  }
+}
+
+// Owner-only endpoints
+export interface BotLog {
+  id: number;
+  level: string;
+  message: string;
+  context?: string;
+  createdAt: string;
+}
+
+export interface AuditLog {
+  id: number;
+  actorId: string;
+  action: string;
+  target?: string;
+  guildId?: string;
+  metadata?: string;
+  createdAt: string;
+}
+
+export async function getBotLogs(
+  since?: string,
+  limit: number = 200
+): Promise<BotLog[]> {
+  const q = new URLSearchParams();
+  if (since) q.set('since', since);
+  q.set('limit', limit.toString());
+
+  try {
+    const response = await botFetchAuth(`/owner/logs?${q.toString()}`);
+    if (!response.ok) {
+      console.error('Failed to fetch bot logs:', response.statusText);
+      return [];
+    }
+    return response.json();
+  } catch (error) {
+    console.error('An error occurred while fetching bot logs:', error);
+    return [];
+  }
+}
+
+export async function getAuditLog(limit: number = 200): Promise<AuditLog[]> {
+  const q = new URLSearchParams();
+  q.set('limit', limit.toString());
+
+  try {
+    const response = await botFetchAuth(`/owner/audit?${q.toString()}`);
+    if (!response.ok) {
+      console.error('Failed to fetch audit log:', response.statusText);
+      return [];
+    }
+    return response.json();
+  } catch (error) {
+    console.error('An error occurred while fetching audit log:', error);
+    return [];
+  }
+}
+
+export async function reloadCommands(commandName?: string): Promise<{ success: boolean }> {
+  try {
+    const response = await botFetchAuth('/owner/commands/reload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: commandName }),
+    });
+    if (!response.ok) {
+      console.error('Failed to reload commands:', response.statusText);
+      return { success: false };
+    }
+    return response.json();
+  } catch (error) {
+    console.error('An error occurred while reloading commands:', error);
+    return { success: false };
+  }
+}
+
+// WebSocket URL helper
+export function getWebSocketUrl(token: string): string {
+  const wsUrl = API_ROOT.replace(/^http/, 'ws');
+  return `${wsUrl}/ws?token=${encodeURIComponent(token)}`;
 }
