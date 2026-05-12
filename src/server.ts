@@ -831,7 +831,7 @@ export async function setupServer(harmonix: Harmonix) {
         console.log(`[MUTUAL-SERVERS] Token scope: ${tokenScope || 'UNKNOWN'}`);
         
         // Check if token is expired or about to expire (within 5 minutes)
-        const isTokenExpired = discordAccount.expires_at && Date.now() >= discordAccount.expires_at * 1000 - 300000;
+        const isTokenExpired = lookupResult.primaryDiscordAccount.expires_at && Date.now() >= lookupResult.primaryDiscordAccount.expires_at * 1000 - 300000;
         
         // Refresh token if needed - only if we have a refresh token
         if (accessToken && isTokenExpired && refreshToken) {
