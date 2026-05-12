@@ -880,10 +880,7 @@ export async function setupServer(harmonix: Harmonix) {
                 // Clear the invalid tokens from database to force re-authentication
                 await prisma.account.update({
                   where: {
-                    provider_providerAccountId: {
-                      provider: 'discord',
-                      providerAccountId: discordAccount.providerAccountId
-                    }
+                    id: lookupResult!.primaryDiscordAccount!.id
                   },
                   data: {
                     access_token: null,
