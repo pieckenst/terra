@@ -39,6 +39,7 @@ import { ThemeSwitch } from '@/components/ui/themeswitch';
 import { Toaster } from '@/components/ui/sonner';
 import { auth } from '@/lib/auth';
 import { redirect } from 'next/navigation';
+import { GlobalErrorHandler } from '@/components/global-error-handler';
 
 export default async function DashboardLayout({
   children
@@ -52,27 +53,30 @@ export default async function DashboardLayout({
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      <Providers>
-        <main className="flex min-h-screen w-full flex-col bg-background text-foreground">
-          <DesktopNav />
-          <div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-14">
-            <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
-              <MobileNav />
-              <Suspense fallback={<Skeleton className="h-8 w-24 rounded-md" />}>
-                <DashboardBreadcrumb />
-              </Suspense>
-              <div className="relative ml-auto flex-1 md:grow-0">
-                <SearchInput />
-              </div>
-              <UserNav user={session.user} />
-              <ThemeSwitch />
-            </header>
-            <main className="grid flex-1 items-start gap-2 p-4 sm:px-6 sm:py-0 md:gap-4 bg-background">
-              {children}
-            </main>
-          </div>
-        </main>
-      </Providers>
+      <GlobalErrorHandler>
+        <Providers>
+          <main className="flex min-h-screen w-full flex-col bg-background text-foreground">
+            <DesktopNav />
+            <div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-14">
+              <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
+                <MobileNav />
+                <Suspense fallback={<Skeleton className="h-8 w-24 rounded-md" />}>
+                  <DashboardBreadcrumb />
+                </Suspense>
+                <div className="relative ml-auto flex-1 md:grow-0">
+                  <SearchInput />
+                </div>
+                <UserNav user={session.user} />
+                <ThemeSwitch />
+              </header>
+              <main className="grid flex-1 items-start gap-2 p-4 sm:px-6 sm:py-0 md:gap-4 bg-background">
+                {children}
+              </main>
+            </div>
+          </main>
+          <Toaster />
+        </Providers>
+      </GlobalErrorHandler>
     </ThemeProvider>
   );
 }

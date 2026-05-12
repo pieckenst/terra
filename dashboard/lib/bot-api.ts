@@ -3,6 +3,40 @@ import { clearBotAuthTokenCache, getBotAuthToken } from './bot-auth-token';
 const API_ROOT = process.env.NEXT_PUBLIC_BOT_API_URL || 'http://localhost:3001';
 const API_BASE_URL = `${API_ROOT}/api`;
 
+// Enhanced fetch wrapper that returns errors instead of throwing them
+async function fetchWithErrorHandling(url: string, options: RequestInit = {}): Promise<{ response: Response | null; error?: string; status?: number }> {
+  try {
+    const response = await fetch(url, { ...options, cache: 'no-store' });
+    
+    if (!response.ok) {
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      
+      // Try to parse error response for more details
+      try {
+        const errorData = await response.json();
+        if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+        if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+      } catch {
+        // Ignore JSON parse errors
+      }
+      
+      return { response: null, error: errorMessage, status: response.status };
+    }
+    
+    return { response, error: undefined };
+  } catch (error) {
+    // Return error instead of throwing
+    return { 
+      response: null, 
+      error: error instanceof Error ? error.message : 'Network error' 
+    };
+  }
+}
+
 async function botFetchAuth(path: string, init: RequestInit = {}): Promise<Response> {
   const url = `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
   const send = async () => {
@@ -344,6 +378,14 @@ export interface BotStats {
   totalMembers: number;
   activeUsers: number;
   totalCommands: number;
+  uptime?: {
+    milliseconds: number;
+    days: number;
+    hours: number;
+    minutes: number;
+    seconds: number;
+    formatted: string;
+  };
 }
 
 interface FetchError extends Error {
@@ -376,7 +418,7 @@ interface GetUserProfileSession {
 export async function getUserProfile(
   userId: string, 
   session?: GetUserProfileSession
-): Promise<{ data: UserProfile | null; error?: string }> {
+): Promise<{ data: UserProfile | null; error?: string; requiresReauth?: boolean; details?: string }> {
   try {
     // Get access token from session
     const accessToken = session?.user?.accessToken || session?.accessToken;
@@ -408,15 +450,20 @@ export async function getUserProfile(
         signal: controller.signal,
         keepalive: true
       });
-    } catch (error) {
+    } catch (error: any) {
       clearTimeout(timeout);
       if (error.name === 'AbortError') {
+        console.warn('[getUserProfile] Request timed out');
         return { 
           data: null, 
           error: 'Request timed out. Please try again.' 
         };
       }
-      throw error; // Re-throw other errors
+      console.warn('[getUserProfile] Network error:', error);
+      return { 
+        data: null, 
+        error: 'Network error. Please check your connection.' 
+      };
     } finally {
       clearTimeout(timeout);
     }
@@ -450,17 +497,26 @@ export async function getUserProfile(
         }
       }
       
+      // Handle rate limit errors
+      if (response.status === 429) {
+        return { 
+          data: null, 
+          error: 'Rate limit exceeded. Please wait a moment and try again.' 
+        };
+      }
+      
       // Try to parse error response
       try {
         const errorData = await response.json();
         return { 
           data: null, 
-          error: errorData.message || `Failed to fetch user profile: ${response.statusText}`,
+          error: errorData.message || errorData.error || `HTTP ${response.status}: ${response.statusText}`,
+          details: errorData.details
         };
-      } catch (parseError) {
+      } catch {
         return { 
           data: null, 
-          error: `Failed to fetch user profile: ${response.statusText}`,
+          error: `HTTP ${response.status}: ${response.statusText}` 
         };
       }
     }
@@ -576,7 +632,7 @@ export async function getStats(): Promise<BotStats | null> {
 
 export async function getMutualServers(
   userId: string
-): Promise<MutualServersResponse | null> {
+): Promise<{ data: MutualServersResponse | null; error?: string; requiresReauth?: boolean }> {
   const url = `${API_BASE_URL}/users/${userId}/mutual-servers`;
   console.log('[BOT-API] Fetching mutual servers from:', url);
   try {
@@ -594,22 +650,42 @@ export async function getMutualServers(
             if (typeof window !== 'undefined') {
               window.location.href = '/login?error=session_expired';
             }
-            return null;
+            return { 
+              data: null, 
+              error: errorData.details || 'Your Discord session has expired. Please re-authenticate.',
+              requiresReauth: true
+            };
           }
         } catch {
           // Ignore parse errors
         }
       }
-      console.error('Failed to fetch mutual servers:', response.statusText);
-      return null;
+      
+      // Handle rate limit errors
+      if (response.status === 429) {
+        return { 
+          data: null, 
+          error: 'Rate limit exceeded. Please wait a moment and try again.' 
+        };
+      }
+      
+      // Return error instead of throwing
+      return { 
+        data: null, 
+        error: `Failed to fetch mutual servers: ${response.statusText}` 
+      };
     }
     
     const data = await response.json();
     console.log('[BOT-API] Mutual servers data:', data);
-    return data;
+    return { data };
   } catch (error) {
     console.error('An error occurred while fetching mutual servers:', error);
-    return null;
+    // Return error instead of throwing
+    return { 
+      data: null, 
+      error: error instanceof Error ? error.message : 'An unknown error occurred' 
+    };
   }
 }
 

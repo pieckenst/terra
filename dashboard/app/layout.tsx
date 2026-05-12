@@ -1,5 +1,6 @@
 import '../styles/globals.css';
 import { Providers } from './providers';
+import { GlobalErrorHandler } from '@/components/global-error-handler';
 
 export const metadata = {
   title: 'Terra Dashboard',
@@ -18,14 +19,16 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </head>
       <body className="flex min-h-screen w-full flex-col bg-background text-foreground">
-        <Providers
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <main className="flex-grow">{children}</main>
-        </Providers>
+        <GlobalErrorHandler>
+          <Providers
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <main className="flex-grow">{children}</main>
+          </Providers>
+        </GlobalErrorHandler>
       </body>
     </html>
   );

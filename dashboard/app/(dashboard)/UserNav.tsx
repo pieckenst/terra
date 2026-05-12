@@ -15,6 +15,7 @@ import {
 import Link from 'next/link';
 import { type Session } from 'next-auth';
 import { getUserProfile } from '@/lib/bot-api';
+import { useErrorHandler } from '@/components/global-error-handler';
 
 interface UserNavProps {
   user: Session['user'];
@@ -24,22 +25,31 @@ export function UserNav({ user }: UserNavProps) {
   const { data: session } = useSession();
   const [avatarUrl, setAvatarUrl] = useState(user?.image ?? '/placeholder-user.jpg');
   const [loading, setLoading] = useState(true);
+  const { handleApiError } = useErrorHandler();
 
   useEffect(() => {
     const fetchFreshAvatar = async () => {
       if (session?.user?.id && session?.accessToken) {
         try {
-          const { data } = await getUserProfile(session.user.id, {
+          const result = await getUserProfile(session.user.id, {
             user: session.user,
             accessToken: session.accessToken
           });
           
-          if (data?.avatar) {
-            setAvatarUrl(data.avatar);
+          if (result.error) {
+            // Use custom error handler to show toast
+            handleApiError(
+              { 
+                status: result.requiresReauth ? 401 : 408, 
+                statusText: result.error 
+              } as Response,
+              'getUserProfile'
+            );
+          } else if (result.data?.avatar) {
+            setAvatarUrl(result.data.avatar);
           }
         } catch (error) {
-          console.warn('Failed to refresh avatar, using cached:', error);
-          // Keep the cached avatar from session
+          handleApiError(error, 'getUserProfile');
         } finally {
           setLoading(false);
         }
@@ -49,7 +59,7 @@ export function UserNav({ user }: UserNavProps) {
     };
 
     fetchFreshAvatar();
-  }, [session]);
+  }, [session, handleApiError]);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>

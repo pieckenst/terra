@@ -21,6 +21,7 @@ import {
   isValidDiscordSnowflake,
   repairCorruptedAccounts
 } from './lib/userLookup';
+import { fetchCharacterInfo, searchCharacter } from '../discordkit/utils/lodestone-utils';
 
 // Helper function to construct Discord avatar URL
 function getDiscordAvatarUrl(userId: string, avatarHash: string | null, discriminator: string = '0'): string {
@@ -563,14 +564,26 @@ export async function setupServer(harmonix: Harmonix) {
         accessToken = discordAccount.access_token;
       }
 
-      // Helper function to handle rate limits with exponential backoff
-      const fetchWithRetry = async (url: string, options: any = {}, retries = 3, backoff = 1000): Promise<Response> => {
+      // Helper function to handle rate limits with proper retry-after handling
+      const fetchWithRetry = async (url: string, options: any = {}, retries = 3): Promise<Response> => {
         try {
           const response = await fetch(url, options);
           
           // If we're rate limited, wait and retry
           if (response.status === 429) {
-            const retryAfter = parseInt(response.headers.get('retry-after') || '1') * 1000 || backoff;
+            const retryAfterHeader = response.headers.get('retry-after');
+            let retryAfter = 1000; // Default 1 second
+            
+            if (retryAfterHeader) {
+              // Discord returns retry-after in seconds
+              const retryAfterSeconds = parseFloat(retryAfterHeader);
+              if (!isNaN(retryAfterSeconds)) {
+                retryAfter = Math.ceil(retryAfterSeconds * 1000);
+                // Cap at 60 seconds to prevent excessive waits
+                retryAfter = Math.min(retryAfter, 60000);
+              }
+            }
+            
             console.warn(`Rate limited. Retrying in ${retryAfter}ms (${retries} retries left)`);
             
             if (retries <= 0) {
@@ -578,15 +591,15 @@ export async function setupServer(harmonix: Harmonix) {
             }
             
             await new Promise(resolve => setTimeout(resolve, retryAfter));
-            return fetchWithRetry(url, options, retries - 1, backoff * 2);
+            return fetchWithRetry(url, options, retries - 1);
           }
           
           return response;
         } catch (error) {
           if (retries <= 0) throw error;
           console.warn(`Request failed, retrying (${retries} attempts left):`, error);
-          await new Promise(resolve => setTimeout(resolve, backoff));
-          return fetchWithRetry(url, options, retries - 1, backoff * 2);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          return fetchWithRetry(url, options, retries - 1);
         }
       };
 
@@ -791,13 +804,58 @@ export async function setupServer(harmonix: Harmonix) {
         iconUrl: getGuildIconUrl(guild.id, guild.icon ?? null, 256),
         channelCount: guild.channels?.size || 0,
         roleCount: guild.roles?.size || 0,
-        createdAt: (BigInt(guild.id) >> BigInt(22)) + 1420070400000n,
+        createdAt: Number((BigInt(guild.id) >> BigInt(22)) + 1420070400000n),
       };
       
       return reply.status(200).send(response);
     } catch (error) {
       console.error('Error fetching server details:', error);
       return reply.status(500).send({ error: 'Internal server error' });
+    }
+  });
+
+  // Lodestone character lookup by ID
+  apiServer.get("/api/lodestone/character/:characterId", async (request, reply) => {
+    const { characterId } = request.params as { characterId: string };
+    
+    try {
+      console.log(`[LODESTONE] Fetching character info for ID: ${characterId}`);
+      const characterInfo = await fetchCharacterInfo(characterId);
+      return reply.status(200).send(characterInfo);
+    } catch (error: any) {
+      console.error('[LODESTONE] Error fetching character:', error);
+      if (error.message?.includes('not found')) {
+        return reply.status(404).send({ error: 'Character not found' });
+      }
+      return reply.status(500).send({ error: 'Failed to fetch character information' });
+    }
+  });
+
+  // Lodestone character search
+  apiServer.get("/api/lodestone/search", async (request, reply) => {
+    const query = request.query as { name?: string; server?: string };
+    
+    if (!query.name) {
+      return reply.status(400).send({ error: 'Character name is required' });
+    }
+    
+    try {
+      console.log(`[LODESTONE] Searching for character: ${query.name} on server: ${query.server || 'any'}`);
+      const characterId = await searchCharacter(query.server || '', query.name);
+      
+      if (!characterId) {
+        return reply.status(404).send({ error: 'Character not found' });
+      }
+      
+      // Fetch full character info
+      const characterInfo = await fetchCharacterInfo(characterId);
+      return reply.status(200).send({ 
+        characterId,
+        ...characterInfo 
+      });
+    } catch (error: any) {
+      console.error('[LODESTONE] Error searching for character:', error);
+      return reply.status(500).send({ error: 'Failed to search for character' });
     }
   });
 
@@ -905,13 +963,25 @@ export async function setupServer(harmonix: Harmonix) {
         }
       }
       
-      // Helper function to handle rate limits with exponential backoff
-      const fetchWithRetry = async (url: string, options: any = {}, retries = 3, backoff = 1000): Promise<Response> => {
+      // Helper function to handle rate limits with proper retry-after handling
+      const fetchWithRetry = async (url: string, options: any = {}, retries = 3): Promise<Response> => {
         try {
           const response = await fetch(url, options);
           
           if (response.status === 429) {
-            const retryAfter = parseInt(response.headers.get('retry-after') || '1') * 1000 || backoff;
+            const retryAfterHeader = response.headers.get('retry-after');
+            let retryAfter = 1000; // Default 1 second
+            
+            if (retryAfterHeader) {
+              // Discord returns retry-after in seconds
+              const retryAfterSeconds = parseFloat(retryAfterHeader);
+              if (!isNaN(retryAfterSeconds)) {
+                retryAfter = Math.ceil(retryAfterSeconds * 1000);
+                // Cap at 60 seconds to prevent excessive waits
+                retryAfter = Math.min(retryAfter, 60000);
+              }
+            }
+            
             console.warn(`[MUTUAL-SERVERS] Rate limited. Retrying in ${retryAfter}ms (${retries} retries left)`);
             
             if (retries <= 0) {
@@ -919,15 +989,15 @@ export async function setupServer(harmonix: Harmonix) {
             }
             
             await new Promise(resolve => setTimeout(resolve, retryAfter));
-            return fetchWithRetry(url, options, retries - 1, backoff * 2);
+            return fetchWithRetry(url, options, retries - 1);
           }
           
           return response;
         } catch (error) {
           if (retries <= 0) throw error;
           console.warn(`[MUTUAL-SERVERS] Request failed, retrying (${retries} attempts left):`, error);
-          await new Promise(resolve => setTimeout(resolve, backoff));
-          return fetchWithRetry(url, options, retries - 1, backoff * 2);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          return fetchWithRetry(url, options, retries - 1);
         }
       };
       
@@ -975,13 +1045,12 @@ export async function setupServer(harmonix: Harmonix) {
                 const userGuildData = userGuilds.map(guild => ({
                   userId: lookupResult.user.id,
                   guildId: guild.id,
-                  permissions: guild.permissions,
+                  permissions: String(guild.permissions),
                   owner: guild.owner || false
                 }));
                 
                 await prisma.userGuild.createMany({
-                  data: userGuildData,
-                  skipDuplicates: true
+                  data: userGuildData
                 });
                 
                 console.log(`[MUTUAL-SERVERS] Cached ${userGuildData.length} guilds in database`);
@@ -1459,11 +1528,26 @@ export async function setupServer(harmonix: Harmonix) {
 
       const totalCommands = harmonix.commands.size;
 
+      // Calculate bot uptime
+      const uptime = harmonix.client.uptime || 0;
+      const uptimeDays = Math.floor(uptime / 86400000);
+      const uptimeHours = Math.floor((uptime % 86400000) / 3600000);
+      const uptimeMinutes = Math.floor((uptime % 3600000) / 60000);
+      const uptimeSeconds = Math.floor((uptime % 60000) / 1000);
+
       return reply.status(200).send({
         totalServers,
         totalMembers,
         activeUsers,
         totalCommands,
+        uptime: {
+          milliseconds: uptime,
+          days: uptimeDays,
+          hours: uptimeHours,
+          minutes: uptimeMinutes,
+          seconds: uptimeSeconds,
+          formatted: `${uptimeDays}d ${uptimeHours}h ${uptimeMinutes}m ${uptimeSeconds}s`
+        }
       });
     } catch (error) {
       console.error("Failed to fetch stats:", error);

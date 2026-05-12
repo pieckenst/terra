@@ -18,92 +18,154 @@ import {
 } from '@/lib/discord-display';
 import { signIn } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
+import { AlertCircle, RefreshCw, MessageCircle, Wifi, Server, ShieldAlert, Clock } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useErrorHandler, errorBus } from '@/components/global-error-handler';
 
 export default function ProfilePage() {
   const { data: session, status } = useSession();
+  const { handleApiError } = useErrorHandler();
   const [userData, setUserData] = useState<UserProfile | null>(null);
   const [mutualServersData, setMutualServersData] = useState<MutualServersResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<number | string | null>(null);
+  const [errorSeverity, setErrorSeverity] = useState<'error' | 'warning' | 'info'>('error');
+  const [hasAttemptedFetch, setHasAttemptedFetch] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   useEffect(() => {
-    const fetchUserData = async () => {
-      if (status === 'authenticated' && session?.user?.id) {
-        try {
-          setIsLoading(true);
-          // Pass the session with access token to getUserProfile
-          const { data, error } = await getUserProfile(session.user.id, { 
-            user: session.user,
-            accessToken: session.accessToken 
-          });
-          
-          if (data) {
-            setUserData(data);
-            
-            // Fetch mutual servers if we have a discord user ID
-            const discordId = data.discordUserId || session?.user?.discordId;
-            console.log('[PROFILE] Fetching mutual servers for discordId:', discordId);
-            console.log('[PROFILE] Data discordUserId:', data.discordUserId);
-            console.log('[PROFILE] Session discordId:', session?.user?.discordId);
-            
-            if (discordId) {
-              try {
-                const mutualData = await getMutualServers(discordId);
-                console.log('[PROFILE] Mutual servers response:', mutualData);
-                if (mutualData) {
-                  setMutualServersData(mutualData);
-                }
-              } catch (mutualError) {
-                console.error('Failed to fetch mutual servers:', mutualError);
-              }
-            } else {
-              console.warn('[PROFILE] No discordId available for mutual servers lookup');
-            }
-          }
-          
-          // Handle API errors gracefully
-          if (error) {
-            console.warn('Profile info:', error);
-            // If it's a 401, the session might be expired
-            if (error === 'Authentication required. Please sign in again.') {
-              // Force sign out and redirect to login
-              await signOut({ redirect: true, callbackUrl: '/login' });
-              return;
-            }
-          }
-        } catch (error) {
-          console.error('Failed to fetch user data:', error);
-          // Set a minimal user data object to prevent UI errors
-          const fallbackName = session.user.name || 'User';
-          const userId = session.user.id || '';
-          
-          // Construct default avatar from user ID
-          let fallbackAvatar = session.user.image;
-          if (!fallbackAvatar && userId) {
-            const avatarIndex = Number(BigInt(userId) >> BigInt(22)) % 6;
-            fallbackAvatar = `https://cdn.discordapp.com/embed/avatars/${avatarIndex}.png`;
-          }
-          
-          setUserData({
-            id: session.user.id,
-            discordUserId: session.user.discordId ?? null,
-            username: fallbackName,
-            discriminator: '0',
-            globalName: session.user.name || null,
-            avatar: fallbackAvatar || null,
-            email: session.user.email || null,
-            isAdmin: false,
-            isBlocked: false,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            guilds: [],
-          } as UserProfile);
-        } finally {
-          setIsLoading(false);
-        }
+    // Subscribe to global error bus to catch API errors
+    const unsubscribe = errorBus.subscribe((event) => {
+      // Only handle errors related to profile/user data
+      if (event.message.toLowerCase().includes('profile') || 
+          event.message.toLowerCase().includes('user') ||
+          event.message.toLowerCase().includes('rate limit') ||
+          event.code === 429) {
+        setError(event.message);
+        setErrorCode(event.code || null);
+        setErrorSeverity(event.severity || 'error');
+        // Set userData to null to trigger unavailable state
+        setUserData(null);
+        setHasAttemptedFetch(true);
       }
-    };
+    });
 
-    fetchUserData();
+    return () => unsubscribe();
+  }, []);
+
+  const fetchUserData = async (isRetry = false) => {
+    // Prevent automatic re-fetch if we already attempted and got an error
+    // Only allow manual retries via the refresh button
+    if (hasAttemptedFetch && !isRetry) {
+      console.log('[PROFILE] Skipping auto-fetch due to previous error. Use manual refresh to retry.');
+      return;
+    }
+
+    if (status === 'authenticated' && session?.user?.id) {
+      try {
+        if (isRetry) {
+          setIsRetrying(true);
+        }
+        setIsLoading(true);
+        setError(null);
+        setErrorCode(null);
+        
+        // Pass the session with access token to getUserProfile
+        const { data, error: profileError, details } = await getUserProfile(session.user.id, { 
+          user: session.user,
+          accessToken: session.accessToken 
+        });
+        
+        if (data) {
+          setUserData(data);
+          setHasAttemptedFetch(true);
+          
+          // Fetch mutual servers if we have a discord user ID
+          const discordId = data.discordUserId || session?.user?.discordId;
+          console.log('[PROFILE] Fetching mutual servers for discordId:', discordId);
+          console.log('[PROFILE] Data discordUserId:', data.discordUserId);
+          console.log('[PROFILE] Session discordId:', session?.user?.discordId);
+          
+          if (discordId) {
+            try {
+              const mutualData = await getMutualServers(discordId);
+              console.log('[PROFILE] Mutual servers response:', mutualData);
+              if (mutualData.data) {
+                setMutualServersData(mutualData.data);
+              }
+              // Handle mutual servers error
+              if (mutualData.error) {
+                handleApiError(mutualData.error, 'mutual-servers');
+                // Don't set userData to null for mutual servers error, just log it
+              }
+            } catch (mutualError) {
+              console.error('Failed to fetch mutual servers:', mutualError);
+              handleApiError(mutualError, 'mutual-servers');
+            }
+          } else {
+            console.warn('[PROFILE] No discordId available for mutual servers lookup');
+          }
+        }
+        
+        // Handle API errors gracefully
+        if (profileError) {
+          console.warn('Profile error:', profileError);
+          setError(profileError);
+          
+          // Determine error code and severity
+          if (profileError.toLowerCase().includes('rate limit') || profileError.toLowerCase().includes('429')) {
+            setErrorCode(429);
+            setErrorSeverity('warning');
+          } else if (profileError.toLowerCase().includes('timeout')) {
+            setErrorCode('TIMEOUT');
+            setErrorSeverity('warning');
+          } else if (profileError.toLowerCase().includes('network')) {
+            setErrorCode('NETWORK');
+            setErrorSeverity('warning');
+          } else {
+            setErrorCode('API_ERROR');
+            setErrorSeverity('error');
+          }
+          
+          // Use global error handler for API errors
+          handleApiError(profileError, 'profile');
+          
+          // If it's a 401, the session might be expired
+          if (profileError === 'Authentication required. Please sign in again.') {
+            // Force sign out and redirect to login
+            await signOut({ redirect: true, callbackUrl: '/login' });
+            return;
+          }
+          
+          // Set userData to null to trigger unavailable state
+          setUserData(null);
+        }
+      } catch (error) {
+        console.error('Failed to fetch user data:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Failed to load profile data';
+        setError(errorMessage);
+        setErrorCode('FETCH_ERROR');
+        setErrorSeverity('error');
+        
+        // Use global error handler
+        handleApiError(error, 'profile-fetch');
+        
+        // Set userData to null to trigger unavailable state
+        setUserData(null);
+      } finally {
+        setIsLoading(false);
+        setIsRetrying(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    // Only fetch on initial mount or when session changes
+    // Don't re-fetch if we already have an error state
+    if (!hasAttemptedFetch || (status === 'authenticated' && session?.user?.id && !error)) {
+      fetchUserData();
+    }
   }, [status, session]);
 
   if (status === 'loading' || isLoading) {
@@ -204,6 +266,53 @@ export default function ProfilePage() {
   
   // Handle case when backend API is unavailable
   if (userData === null) {
+    // Determine error type for styling
+    const isRateLimit = errorCode === 429 || error?.toLowerCase().includes('rate limit');
+    const isTimeout = errorCode === 'TIMEOUT' || error?.toLowerCase().includes('timeout');
+    const isNetwork = errorCode === 'NETWORK' || error?.toLowerCase().includes('network');
+    const isWarning = errorSeverity === 'warning';
+    
+    // Get appropriate icon and colors based on error type
+    const getErrorIcon = () => {
+      if (isRateLimit) return <Clock className="h-6 w-6" />;
+      if (isTimeout) return <Clock className="h-6 w-6" />;
+      if (isNetwork) return <Wifi className="h-6 w-6" />;
+      return <AlertCircle className="h-6 w-6" />;
+    };
+    
+    const getErrorIconBg = () => {
+      if (isRateLimit) return 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-500';
+      if (isTimeout) return 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-500';
+      if (isNetwork) return 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-500';
+      return 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-500';
+    };
+    
+    const getErrorTitle = () => {
+      if (isRateLimit) return 'Rate Limit Exceeded';
+      if (isTimeout) return 'Request Timeout';
+      if (isNetwork) return 'Network Error';
+      return 'Service Unavailable';
+    };
+    
+    const getErrorDescription = () => {
+      if (isRateLimit) return 'You have made too many requests. Please wait a moment before trying again.';
+      if (isTimeout) return 'The request took too long to complete. Please check your connection and try again.';
+      if (isNetwork) return 'Unable to connect to the server. Please check your internet connection.';
+      return 'The profile service is currently unavailable';
+    };
+    
+    const getAlertVariant = () => {
+      if (isWarning) return 'default';
+      return 'destructive';
+    };
+    
+    const getAlertClass = () => {
+      if (isRateLimit) return 'border-amber-200 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-900/30 text-amber-900 dark:text-amber-100';
+      if (isTimeout) return 'border-orange-200 bg-orange-50 dark:bg-orange-900/10 dark:border-orange-900/30 text-orange-900 dark:text-orange-100';
+      if (isNetwork) return 'border-blue-200 bg-blue-50 dark:bg-blue-900/10 dark:border-blue-900/30 text-blue-900 dark:text-blue-100';
+      return 'border-red-200 bg-red-50 dark:bg-red-900/10 dark:border-red-900/30';
+    };
+
     return (
       <div className="container mx-auto py-8 space-y-6">
         <div className="space-y-2">
@@ -213,54 +322,156 @@ export default function ProfilePage() {
           </p>
         </div>
         
-        <div className="grid gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Service Unavailable</CardTitle>
-              <CardDescription>
-                The profile service is currently unavailable. This might be due to:
-              </CardDescription>
+        <div className="grid gap-6 max-w-3xl">
+          {error && (
+            <Alert variant={getAlertVariant()} className={getAlertClass()}>
+              <ShieldAlert className="h-4 w-4" />
+              <AlertTitle>Error Details</AlertTitle>
+              <AlertDescription className="mt-2">
+                {error}
+                {errorCode && (
+                  <span className="ml-2 text-xs opacity-75">
+                    (Code: {errorCode})
+                  </span>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          <Card className="border-2">
+            <CardHeader className="space-y-4">
+              <div className="flex items-center space-x-3">
+                <div className={`p-3 rounded-full ${getErrorIconBg()}`}>
+                  {getErrorIcon()}
+                </div>
+                <div>
+                  <CardTitle className="text-xl">{getErrorTitle()}</CardTitle>
+                  <CardDescription className="text-base">
+                    {getErrorDescription()}
+                  </CardDescription>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent>
-              <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-                <li>Temporary server issues</li>
-                <li>Network connectivity problems</li>
-                <li>Scheduled maintenance</li>
-              </ul>
+            <CardContent className="space-y-6">
+              <div>
+                <h3 className="font-semibold mb-3 flex items-center">
+                  <Server className="h-4 w-4 mr-2 text-muted-foreground" />
+                  Possible Reasons
+                </h3>
+                <ul className="space-y-2 text-muted-foreground">
+                  {isRateLimit && (
+                    <>
+                      <li className="flex items-start">
+                        <span className="mr-2 mt-0.5">•</span>
+                        <span>Too many requests made in a short time</span>
+                      </li>
+                      <li className="flex items-start">
+                        <span className="mr-2 mt-0.5">•</span>
+                        <span>API rate limiting is in effect</span>
+                      </li>
+                    </>
+                  )}
+                  {isTimeout && (
+                    <>
+                      <li className="flex items-start">
+                        <span className="mr-2 mt-0.5">•</span>
+                        <span>Server response time exceeded limit</span>
+                      </li>
+                      <li className="flex items-start">
+                        <span className="mr-2 mt-0.5">•</span>
+                        <span>Poor network connection or high latency</span>
+                      </li>
+                    </>
+                  )}
+                  {isNetwork && (
+                    <>
+                      <li className="flex items-start">
+                        <span className="mr-2 mt-0.5">•</span>
+                        <span>Internet connection is unstable</span>
+                      </li>
+                      <li className="flex items-start">
+                        <span className="mr-2 mt-0.5">•</span>
+                        <span>Server may be temporarily unreachable</span>
+                      </li>
+                    </>
+                  )}
+                  {!isRateLimit && !isTimeout && !isNetwork && (
+                    <>
+                      <li className="flex items-start">
+                        <span className="mr-2 mt-0.5">•</span>
+                        <span>Temporary server issues or high load</span>
+                      </li>
+                      <li className="flex items-start">
+                        <span className="mr-2 mt-0.5">•</span>
+                        <span>Network connectivity problems</span>
+                      </li>
+                      <li className="flex items-start">
+                        <span className="mr-2 mt-0.5">•</span>
+                        <span>Scheduled maintenance in progress</span>
+                      </li>
+                    </>
+                  )}
+                  {error && !isRateLimit && !isTimeout && !isNetwork && (
+                    <li className="flex items-start">
+                      <span className="mr-2 mt-0.5">•</span>
+                      <span>API error: {error.substring(0, 100)}{error.length > 100 ? '...' : ''}</span>
+                    </li>
+                  )}
+                </ul>
+              </div>
               
-              <div className="mt-6 p-4 bg-muted/50 rounded-lg">
-                <h3 className="font-medium mb-2">What you can do:</h3>
-                <ul className="space-y-2 text-sm">
+              <div className="p-4 bg-muted/50 rounded-lg border border-border">
+                <h3 className="font-semibold mb-3 flex items-center">
+                  <Wifi className="h-4 w-4 mr-2 text-muted-foreground" />
+                  What you can do
+                </h3>
+                <ul className="space-y-3 text-sm">
                   <li className="flex items-center">
-                    <span className="mr-2">🔄</span>
+                    <RefreshCw className="h-4 w-4 mr-3 text-muted-foreground flex-shrink-0" />
                     <span>Refresh the page to try again</span>
                   </li>
+                  {isRateLimit && (
+                    <li className="flex items-center">
+                      <Clock className="h-4 w-4 mr-3 text-muted-foreground flex-shrink-0" />
+                      <span>Wait a moment before retrying (rate limit)</span>
+                    </li>
+                  )}
+                  {isTimeout && (
+                    <li className="flex items-center">
+                      <Clock className="h-4 w-4 mr-3 text-muted-foreground flex-shrink-0" />
+                      <span>Check your connection speed and retry</span>
+                    </li>
+                  )}
+                  {isNetwork && (
+                    <li className="flex items-center">
+                      <Wifi className="h-4 w-4 mr-3 text-muted-foreground flex-shrink-0" />
+                      <span>Check your internet connection</span>
+                    </li>
+                  )}
                   <li className="flex items-center">
-                    <span className="mr-2">⏱️</span>
+                    <span className="h-4 w-4 mr-3 text-muted-foreground flex-shrink-0">⏱️</span>
                     <span>Wait a few minutes and try again later</span>
                   </li>
                   <li className="flex items-center">
-                    <span className="mr-2">📧</span>
+                    <MessageCircle className="h-4 w-4 mr-3 text-muted-foreground flex-shrink-0" />
                     <span>Contact support if the issue persists</span>
                   </li>
                 </ul>
               </div>
             </CardContent>
-            <CardFooter className="flex justify-between">
-              <Button variant="outline" onClick={() => window.location.reload()}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
-                  <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-                  <path d="M3 3v5h5"></path>
-                  <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
-                  <path d="M16 16h5v5"></path>
-                </svg>
-                Refresh Page
+            <CardFooter className="flex flex-col sm:flex-row gap-3 pt-6">
+              <Button 
+                variant="outline" 
+                onClick={() => fetchUserData(true)}
+                disabled={isRetrying}
+                className="flex-1"
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${isRetrying ? 'animate-spin' : ''}`} />
+                {isRetrying ? 'Retrying...' : 'Retry'}
               </Button>
-              <Button asChild>
+              <Button asChild className="flex-1">
                 <a href="/support">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
-                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-                  </svg>
+                  <MessageCircle className="mr-2 h-4 w-4" />
                   Contact Support
                 </a>
               </Button>
