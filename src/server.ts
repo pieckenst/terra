@@ -15,6 +15,12 @@ import { loadCommandFromFile, unloadCommand } from './core';
 import fastifyWebsocket from '@fastify/websocket';
 import fastifyCookie from '@fastify/cookie';
 import { jwtVerify } from 'jose';
+import { 
+  findUserByIdentifier, 
+  identifyIdType, 
+  isValidDiscordSnowflake,
+  repairCorruptedAccounts
+} from './lib/userLookup';
 
 // Helper function to construct Discord avatar URL
 function getDiscordAvatarUrl(userId: string, avatarHash: string | null, discriminator: string = '0'): string {
@@ -412,93 +418,33 @@ export async function setupServer(harmonix: Harmonix) {
     return reply.status(200).send(harmonix.options.featureFlags);
   });
 
-  // User profile endpoint
+  // User profile endpoint - uses robust lookup with multiple fallback strategies
   apiServer.get('/api/users/:userId', async (request, reply) => {
     const { userId } = request.params as { userId: string };
     
     try {
       console.log(`[DEBUG] Looking up user with ID: ${userId}`);
       
-      // First try to find user by Discord ID (providerAccountId)
-      console.log(`[DEBUG] Searching for Discord account with providerAccountId: ${userId}`);
-      const discordAccountResult = await prisma.account.findFirst({
-        where: { 
-          provider: 'discord',
-          providerAccountId: userId
-        },
-        include: {
-          user: true
-        }
-      });
-      console.log(`[DEBUG] Discord account lookup result:`, 
-        discordAccountResult ? 'Found' : 'Not found');
-
-      let user = null;
-      let discordAccounts = [];
-      let primaryDiscordAccount = null;
-
-      if (discordAccountResult) {
-        console.log('[DEBUG] Found user by Discord ID:', discordAccountResult.user);
-        user = discordAccountResult.user;
-        
-        // Get all Discord accounts for this user
-        discordAccounts = await prisma.account.findMany({
-          where: { 
-            userId: user.id,
-            provider: 'discord'
-          },
-          select: {
-            providerAccountId: true,
-            provider: true,
-            access_token: true,
-            refresh_token: true,
-            expires_at: true,
-            token_type: true,
-            scope: true
-          }
-        });
-        console.log(`[DEBUG] Found ${discordAccounts.length} Discord accounts for user ${user.id}`);
-        
-        // Use the account used for lookup as primary if available
-        primaryDiscordAccount = discordAccounts.find(acc => acc.providerAccountId === userId) || discordAccounts[0];
-      } else {
-        console.log('[DEBUG] No user found by Discord ID, trying internal ID lookup');
-        
-        // If no user found with this Discord ID, try to find by internal ID (for backward compatibility)
-        const userWithAccounts = await prisma.user.findUnique({
-          where: { id: userId },
-          include: {
-            accounts: {
-              where: { provider: 'discord' },
-              select: {
-                providerAccountId: true,
-                provider: true,
-                access_token: true,
-                refresh_token: true,
-                expires_at: true,
-                token_type: true,
-                scope: true
-              }
-            }
-          }
-        });
-
-        if (userWithAccounts) {
-          console.log('[DEBUG] Found user by internal ID:', userWithAccounts);
-          user = userWithAccounts;
-          discordAccounts = userWithAccounts.accounts || [];
-          primaryDiscordAccount = discordAccounts[0];
-          console.log(`[DEBUG] Found ${discordAccounts.length} Discord accounts for internal user ${user.id}`);
-        }
-      }
+      // Use the robust user lookup utility
+      const lookupResult = await findUserByIdentifier(userId);
       
-      if (!user) {
-        console.log('[DEBUG] User not found with either Discord ID or internal ID');
+      if (!lookupResult) {
+        console.log('[DEBUG] User not found with any lookup strategy');
         return reply.status(404).send({ 
           error: 'User not found',
-          details: `No user found with ID/Discord ID: ${userId}`
+          details: `No user found with ID: ${userId}`,
+          identifier: userId,
+          identifierType: identifyIdType(userId)
         });
       }
+
+      const { user, primaryDiscordAccount, discordId, lookupMethod } = lookupResult;
+      
+      console.log(`[DEBUG] User found via ${lookupMethod}`, {
+        userId: user.id,
+        discordId: discordId,
+        hasAccount: !!primaryDiscordAccount
+      });
 
       const discordAccount = primaryDiscordAccount;
       
@@ -506,11 +452,11 @@ export async function setupServer(harmonix: Harmonix) {
         // Return basic user data without Discord-specific info
         return reply.send({
           id: user.id,
-          discordUserId: user.discordId || null,
+          discordUserId: discordId,
           username: user.name || 'User',
           discriminator: '0',
           globalName: user.name || null,
-          avatar: user.image || getDiscordAvatarUrl(user.discordId || '', null, '0'),
+          avatar: user.image || getDiscordAvatarUrl(discordId || '', null, '0'),
           avatarHash: null,
           email: user.email || null,
           isAdmin: user.isAdmin || false,
@@ -522,6 +468,7 @@ export async function setupServer(harmonix: Harmonix) {
           verified: null,
           locale: null,
           mfaEnabled: null,
+          _lookupMethod: lookupMethod,
           _warnings: ['No Discord account linked or token expired']
         });
       }
@@ -854,57 +801,31 @@ export async function setupServer(harmonix: Harmonix) {
     }
   });
 
-  // Mutual servers detection endpoint
+  // Mutual servers detection endpoint - uses robust user lookup
   apiServer.get('/api/users/:userId/mutual-servers', async (request, reply) => {
     const { userId } = request.params as { userId: string };
     
     try {
       console.log(`[MUTUAL-SERVERS] Finding mutual servers for user ID: ${userId}`);
       
-      // Find user's Discord account - try by providerAccountId first, then by user.id
-      let discordAccount = await prisma.account.findFirst({
-        where: {
-          provider: 'discord',
-          providerAccountId: userId
-        },
-        include: {
-          user: true
-        }
-      });
+      // Use the robust user lookup utility
+      const lookupResult = await findUserByIdentifier(userId);
       
-      // If not found by providerAccountId, try to find by user's internal ID
-      if (!discordAccount) {
-        const user = await prisma.user.findUnique({
-          where: { id: userId },
-          include: {
-            accounts: {
-              where: { provider: 'discord' }
-            }
-          }
-        });
-        
-        if (user && user.accounts.length > 0) {
-          discordAccount = {
-            ...user.accounts[0],
-            user: user
-          } as any;
-          console.log(`[MUTUAL-SERVERS] Found Discord account via user internal ID`);
-        }
-      }
+      console.log(`[MUTUAL-SERVERS] Discord account found: ${lookupResult ? 'YES' : 'NO'}`);
       
-      console.log(`[MUTUAL-SERVERS] Discord account found: ${discordAccount ? 'YES' : 'NO'}`);
-      
-      let discordId = userId;
+      let discordId: string | null = lookupResult?.discordId || null;
       let accessToken: string | null = null;
       let refreshToken: string | null = null;
       let tokenScope: string | null = null;
       
-      if (discordAccount) {
-        discordId = discordAccount.providerAccountId;
-        accessToken = discordAccount.access_token;
-        refreshToken = discordAccount.refresh_token;
-        tokenScope = discordAccount.scope;
+      if (lookupResult?.primaryDiscordAccount) {
+        discordId = lookupResult.primaryDiscordAccount.providerAccountId;
+        accessToken = lookupResult.primaryDiscordAccount.access_token;
+        refreshToken = lookupResult.primaryDiscordAccount.refresh_token;
+        tokenScope = lookupResult.primaryDiscordAccount.scope;
         
+        console.log(`[MUTUAL-SERVERS] Lookup method: ${lookupResult.lookupMethod}`);
+        console.log(`[MUTUAL-SERVERS] Discord ID: ${discordId}`);
         console.log(`[MUTUAL-SERVERS] Has access token: ${accessToken ? 'YES' : 'NO'}`);
         console.log(`[MUTUAL-SERVERS] Has refresh token: ${refreshToken ? 'YES' : 'NO'}`);
         console.log(`[MUTUAL-SERVERS] Token scope: ${tokenScope || 'UNKNOWN'}`);
@@ -933,12 +854,10 @@ export async function setupServer(harmonix: Harmonix) {
             if (tokenResponse.ok) {
               const tokenData = await tokenResponse.json();
               
+              // Update using the account ID from lookup result
               await prisma.account.update({
                 where: {
-                  provider_providerAccountId: {
-                    provider: 'discord',
-                    providerAccountId: discordAccount.providerAccountId
-                  }
+                  id: lookupResult!.primaryDiscordAccount!.id
                 },
                 data: {
                   access_token: tokenData.access_token,
