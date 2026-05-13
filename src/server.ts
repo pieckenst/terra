@@ -1711,19 +1711,22 @@ export async function setupServer(harmonix: Harmonix) {
 
   apiServer.post("/api/users/:userId", async (request, reply) => {
     const { userId } = request.params as { userId: string };
-    const { isAdmin, isBlocked } = request.body as { isAdmin?: boolean; isBlocked?: boolean };
+    const { isAdmin, isBlocked, ffxivCharacterId } = request.body as { isAdmin?: boolean; isBlocked?: boolean; ffxivCharacterId?: string };
 
     try {
+      const updateData: any = {};
+      if (isAdmin !== undefined) updateData.isAdmin = isAdmin;
+      if (isBlocked !== undefined) updateData.isBlocked = isBlocked;
+      if (ffxivCharacterId !== undefined) updateData.ffxivCharacterId = ffxivCharacterId;
+
       const updatedUser = await prisma.user.upsert({
         where: { id: userId },
-        update: {
-          isAdmin,
-          isBlocked,
-        },
+        update: updateData,
         create: {
           id: userId,
           isAdmin: isAdmin ?? false,
           isBlocked: isBlocked ?? false,
+          ffxivCharacterId: ffxivCharacterId ?? null,
         }
       });
       return reply.status(200).send({ success: true, user: updatedUser });

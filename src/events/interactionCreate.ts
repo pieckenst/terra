@@ -6,6 +6,7 @@ import { logError } from "../../discordkit/utils/centralloggingfactory";
 import { colors } from "consola/utils";
 import consola from "consola";
 import { prisma } from "../lib/db";
+import { logCommandUsed, logCommandSuccess, logCommandError } from "../lib/analytics";
 
 export default class extends defineEvent({
   name: "interactionCreate",
@@ -44,16 +45,35 @@ export default class extends defineEvent({
                   }
                 }
 
+                // Log slash command usage
+                const userId = interaction.user?.id || interaction.member?.user?.id;
+                if (userId) {
+                  await logCommandUsed(userId, interaction.guildID, command.name);
+                }
+
                 try {
                   await command.execute(
                     harmonix,
                     interaction,
                     interaction.data.options,
                   );
+                  // Log slash command success
+                  if (userId) {
+                    await logCommandSuccess(userId, interaction.guildID, command.name);
+                  }
                 } catch (error) {
+                  // Log slash command error
+                  if (userId) {
+                    await logCommandError(
+                      userId,
+                      interaction.guildID,
+                      command.name,
+                      error instanceof Error ? error.message : String(error)
+                    );
+                  }
                   logError(
                     `Error handling interaction for command ${interaction.data.name}:`,
-                    error,
+                    error instanceof Error ? error : new Error(String(error)),
                   );
                   await interaction.createMessage({
                     content: "An error occurred while processing the command.",
@@ -71,7 +91,7 @@ export default class extends defineEvent({
                   } catch (error) {
                     logError(
                       `Error handling modal submission for command ${command.name}:`,
-                      error,
+                      error instanceof Error ? error : new Error(String(error)),
                     );
                   }
                 }
@@ -87,7 +107,7 @@ export default class extends defineEvent({
                   } catch (error) {
                     logError(
                       `Error handling component interaction for command ${command.name}:`,
-                      error,
+                      error instanceof Error ? error : new Error(String(error)),
                     );
                   }
                 } else {
@@ -97,7 +117,7 @@ export default class extends defineEvent({
                   } catch (error) {
                     logError(
                       `Error handling interaction for command ${command.name}:`,
-                      error,
+                      error instanceof Error ? error : new Error(String(error)),
                     );
                     await interaction.createMessage({
                       content:

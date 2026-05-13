@@ -49,6 +49,8 @@ export default function ProfilePage() {
         setUserData(null);
         setHasAttemptedFetch(true);
       }
+      // Don't show toast for errors we're handling locally
+      // The global error handler will respect the silent flag
     });
 
     return () => unsubscribe();
@@ -110,37 +112,37 @@ export default function ProfilePage() {
         
         // Handle API errors gracefully
         if (profileError) {
-          console.warn('Profile error:', profileError);
-          setError(profileError);
-          
-          // Determine error code and severity
-          if (profileError.toLowerCase().includes('rate limit') || profileError.toLowerCase().includes('429')) {
-            setErrorCode(429);
-            setErrorSeverity('warning');
-          } else if (profileError.toLowerCase().includes('timeout')) {
-            setErrorCode('TIMEOUT');
-            setErrorSeverity('warning');
-          } else if (profileError.toLowerCase().includes('network')) {
-            setErrorCode('NETWORK');
-            setErrorSeverity('warning');
-          } else {
-            setErrorCode('API_ERROR');
-            setErrorSeverity('error');
+            console.warn('Profile error:', profileError);
+            setError(profileError);
+            
+            // Determine error code and severity
+            if (profileError.toLowerCase().includes('rate limit') || profileError.toLowerCase().includes('429')) {
+              setErrorCode(429);
+              setErrorSeverity('warning');
+            } else if (profileError.toLowerCase().includes('timeout')) {
+              setErrorCode('TIMEOUT');
+              setErrorSeverity('warning');
+            } else if (profileError.toLowerCase().includes('network')) {
+              setErrorCode('NETWORK');
+              setErrorSeverity('warning');
+            } else {
+              setErrorCode('API_ERROR');
+              setErrorSeverity('error');
+            }
+            
+            // Use global error handler for API errors (silent since we handle locally)
+            handleApiError(profileError, 'profile', true);
+            
+            // If it's a 401, the session might be expired
+            if (profileError === 'Authentication required. Please sign in again.') {
+              // Force sign out and redirect to login
+              await signOut({ redirect: true, callbackUrl: '/login' });
+              return;
+            }
+            
+            // Set userData to null to trigger unavailable state
+            setUserData(null);
           }
-          
-          // Use global error handler for API errors
-          handleApiError(profileError, 'profile');
-          
-          // If it's a 401, the session might be expired
-          if (profileError === 'Authentication required. Please sign in again.') {
-            // Force sign out and redirect to login
-            await signOut({ redirect: true, callbackUrl: '/login' });
-            return;
-          }
-          
-          // Set userData to null to trigger unavailable state
-          setUserData(null);
-        }
       } catch (error) {
         console.error('Failed to fetch user data:', error);
         const errorMessage = error instanceof Error ? error.message : 'Failed to load profile data';
@@ -148,8 +150,8 @@ export default function ProfilePage() {
         setErrorCode('FETCH_ERROR');
         setErrorSeverity('error');
         
-        // Use global error handler
-        handleApiError(error, 'profile-fetch');
+        // Use global error handler (silent since we handle locally)
+        handleApiError(error, 'profile-fetch', true);
         
         // Set userData to null to trigger unavailable state
         setUserData(null);

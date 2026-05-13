@@ -4131,6 +4131,7 @@ export namespace Prisma {
     isAdmin: boolean | null
     isBlocked: boolean | null
     role: number | null
+    ffxivCharacterId: string | null
     createdAt: Date | null
     updatedAt: Date | null
   }
@@ -4145,6 +4146,7 @@ export namespace Prisma {
     isAdmin: boolean | null
     isBlocked: boolean | null
     role: number | null
+    ffxivCharacterId: string | null
     createdAt: Date | null
     updatedAt: Date | null
   }
@@ -4159,6 +4161,7 @@ export namespace Prisma {
     isAdmin: number
     isBlocked: number
     role: number
+    ffxivCharacterId: number
     createdAt: number
     updatedAt: number
     _all: number
@@ -4183,6 +4186,7 @@ export namespace Prisma {
     isAdmin?: true
     isBlocked?: true
     role?: true
+    ffxivCharacterId?: true
     createdAt?: true
     updatedAt?: true
   }
@@ -4197,6 +4201,7 @@ export namespace Prisma {
     isAdmin?: true
     isBlocked?: true
     role?: true
+    ffxivCharacterId?: true
     createdAt?: true
     updatedAt?: true
   }
@@ -4211,6 +4216,7 @@ export namespace Prisma {
     isAdmin?: true
     isBlocked?: true
     role?: true
+    ffxivCharacterId?: true
     createdAt?: true
     updatedAt?: true
     _all?: true
@@ -4312,6 +4318,7 @@ export namespace Prisma {
     isAdmin: boolean
     isBlocked: boolean
     role: number
+    ffxivCharacterId: string | null
     createdAt: Date
     updatedAt: Date
     _count: UserCountAggregateOutputType | null
@@ -4345,6 +4352,7 @@ export namespace Prisma {
     isAdmin?: boolean
     isBlocked?: boolean
     role?: boolean
+    ffxivCharacterId?: boolean
     createdAt?: boolean
     updatedAt?: boolean
     accounts?: boolean | User$accountsArgs<ExtArgs>
@@ -4363,6 +4371,7 @@ export namespace Prisma {
     isAdmin?: boolean
     isBlocked?: boolean
     role?: boolean
+    ffxivCharacterId?: boolean
     createdAt?: boolean
     updatedAt?: boolean
   }, ExtArgs["result"]["user"]>
@@ -4377,6 +4386,7 @@ export namespace Prisma {
     isAdmin?: boolean
     isBlocked?: boolean
     role?: boolean
+    ffxivCharacterId?: boolean
     createdAt?: boolean
     updatedAt?: boolean
   }, ExtArgs["result"]["user"]>
@@ -4391,11 +4401,12 @@ export namespace Prisma {
     isAdmin?: boolean
     isBlocked?: boolean
     role?: boolean
+    ffxivCharacterId?: boolean
     createdAt?: boolean
     updatedAt?: boolean
   }
 
-  export type UserOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "discordId" | "name" | "email" | "emailVerified" | "image" | "isAdmin" | "isBlocked" | "role" | "createdAt" | "updatedAt", ExtArgs["result"]["user"]>
+  export type UserOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "discordId" | "name" | "email" | "emailVerified" | "image" | "isAdmin" | "isBlocked" | "role" | "ffxivCharacterId" | "createdAt" | "updatedAt", ExtArgs["result"]["user"]>
   export type UserInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     accounts?: boolean | User$accountsArgs<ExtArgs>
     sessions?: boolean | User$sessionsArgs<ExtArgs>
@@ -4422,6 +4433,7 @@ export namespace Prisma {
       isAdmin: boolean
       isBlocked: boolean
       role: number
+      ffxivCharacterId: string | null
       createdAt: Date
       updatedAt: Date
     }, ExtArgs["result"]["user"]>
@@ -4859,6 +4871,7 @@ export namespace Prisma {
     readonly isAdmin: FieldRef<"User", 'Boolean'>
     readonly isBlocked: FieldRef<"User", 'Boolean'>
     readonly role: FieldRef<"User", 'Int'>
+    readonly ffxivCharacterId: FieldRef<"User", 'String'>
     readonly createdAt: FieldRef<"User", 'DateTime'>
     readonly updatedAt: FieldRef<"User", 'DateTime'>
   }
@@ -14808,6 +14821,7 @@ export namespace Prisma {
     isAdmin: 'isAdmin',
     isBlocked: 'isBlocked',
     role: 'role',
+    ffxivCharacterId: 'ffxivCharacterId',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
   };
@@ -15103,6 +15117,7 @@ export namespace Prisma {
     isAdmin?: BoolFilter<"User"> | boolean
     isBlocked?: BoolFilter<"User"> | boolean
     role?: IntFilter<"User"> | number
+    ffxivCharacterId?: StringNullableFilter<"User"> | string | null
     createdAt?: DateTimeFilter<"User"> | Date | string
     updatedAt?: DateTimeFilter<"User"> | Date | string
     accounts?: AccountListRelationFilter
@@ -15120,6 +15135,7 @@ export namespace Prisma {
     isAdmin?: SortOrder
     isBlocked?: SortOrder
     role?: SortOrder
+    ffxivCharacterId?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
     accounts?: AccountOrderByRelationAggregateInput
@@ -15140,6 +15156,7 @@ export namespace Prisma {
     isAdmin?: BoolFilter<"User"> | boolean
     isBlocked?: BoolFilter<"User"> | boolean
     role?: IntFilter<"User"> | number
+    ffxivCharacterId?: StringNullableFilter<"User"> | string | null
     createdAt?: DateTimeFilter<"User"> | Date | string
     updatedAt?: DateTimeFilter<"User"> | Date | string
     accounts?: AccountListRelationFilter
@@ -15157,6 +15174,7 @@ export namespace Prisma {
     isAdmin?: SortOrder
     isBlocked?: SortOrder
     role?: SortOrder
+    ffxivCharacterId?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
     _count?: UserCountOrderByAggregateInput
@@ -15179,6 +15197,7 @@ export namespace Prisma {
     isAdmin?: BoolWithAggregatesFilter<"User"> | boolean
     isBlocked?: BoolWithAggregatesFilter<"User"> | boolean
     role?: IntWithAggregatesFilter<"User"> | number
+    ffxivCharacterId?: StringNullableWithAggregatesFilter<"User"> | string | null
     createdAt?: DateTimeWithAggregatesFilter<"User"> | Date | string
     updatedAt?: DateTimeWithAggregatesFilter<"User"> | Date | string
   }
@@ -15831,6 +15850,7 @@ export namespace Prisma {
     isAdmin?: boolean
     isBlocked?: boolean
     role?: number
+    ffxivCharacterId?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     accounts?: AccountCreateNestedManyWithoutUserInput
@@ -15848,6 +15868,7 @@ export namespace Prisma {
     isAdmin?: boolean
     isBlocked?: boolean
     role?: number
+    ffxivCharacterId?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     accounts?: AccountUncheckedCreateNestedManyWithoutUserInput
@@ -15865,6 +15886,7 @@ export namespace Prisma {
     isAdmin?: BoolFieldUpdateOperationsInput | boolean
     isBlocked?: BoolFieldUpdateOperationsInput | boolean
     role?: IntFieldUpdateOperationsInput | number
+    ffxivCharacterId?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     accounts?: AccountUpdateManyWithoutUserNestedInput
@@ -15882,6 +15904,7 @@ export namespace Prisma {
     isAdmin?: BoolFieldUpdateOperationsInput | boolean
     isBlocked?: BoolFieldUpdateOperationsInput | boolean
     role?: IntFieldUpdateOperationsInput | number
+    ffxivCharacterId?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     accounts?: AccountUncheckedUpdateManyWithoutUserNestedInput
@@ -15899,6 +15922,7 @@ export namespace Prisma {
     isAdmin?: boolean
     isBlocked?: boolean
     role?: number
+    ffxivCharacterId?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
   }
@@ -15913,6 +15937,7 @@ export namespace Prisma {
     isAdmin?: BoolFieldUpdateOperationsInput | boolean
     isBlocked?: BoolFieldUpdateOperationsInput | boolean
     role?: IntFieldUpdateOperationsInput | number
+    ffxivCharacterId?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
@@ -15927,6 +15952,7 @@ export namespace Prisma {
     isAdmin?: BoolFieldUpdateOperationsInput | boolean
     isBlocked?: BoolFieldUpdateOperationsInput | boolean
     role?: IntFieldUpdateOperationsInput | number
+    ffxivCharacterId?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
@@ -16725,6 +16751,7 @@ export namespace Prisma {
     isAdmin?: SortOrder
     isBlocked?: SortOrder
     role?: SortOrder
+    ffxivCharacterId?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
   }
@@ -16743,6 +16770,7 @@ export namespace Prisma {
     isAdmin?: SortOrder
     isBlocked?: SortOrder
     role?: SortOrder
+    ffxivCharacterId?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
   }
@@ -16757,6 +16785,7 @@ export namespace Prisma {
     isAdmin?: SortOrder
     isBlocked?: SortOrder
     role?: SortOrder
+    ffxivCharacterId?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
   }
@@ -17852,6 +17881,7 @@ export namespace Prisma {
     isAdmin?: boolean
     isBlocked?: boolean
     role?: number
+    ffxivCharacterId?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     accounts?: AccountCreateNestedManyWithoutUserInput
@@ -17868,6 +17898,7 @@ export namespace Prisma {
     isAdmin?: boolean
     isBlocked?: boolean
     role?: number
+    ffxivCharacterId?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     accounts?: AccountUncheckedCreateNestedManyWithoutUserInput
@@ -17900,6 +17931,7 @@ export namespace Prisma {
     isAdmin?: BoolFieldUpdateOperationsInput | boolean
     isBlocked?: BoolFieldUpdateOperationsInput | boolean
     role?: IntFieldUpdateOperationsInput | number
+    ffxivCharacterId?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     accounts?: AccountUpdateManyWithoutUserNestedInput
@@ -17916,6 +17948,7 @@ export namespace Prisma {
     isAdmin?: BoolFieldUpdateOperationsInput | boolean
     isBlocked?: BoolFieldUpdateOperationsInput | boolean
     role?: IntFieldUpdateOperationsInput | number
+    ffxivCharacterId?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     accounts?: AccountUncheckedUpdateManyWithoutUserNestedInput
@@ -17932,6 +17965,7 @@ export namespace Prisma {
     isAdmin?: boolean
     isBlocked?: boolean
     role?: number
+    ffxivCharacterId?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     sessions?: SessionCreateNestedManyWithoutUserInput
@@ -17948,6 +17982,7 @@ export namespace Prisma {
     isAdmin?: boolean
     isBlocked?: boolean
     role?: number
+    ffxivCharacterId?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     sessions?: SessionUncheckedCreateNestedManyWithoutUserInput
@@ -17980,6 +18015,7 @@ export namespace Prisma {
     isAdmin?: BoolFieldUpdateOperationsInput | boolean
     isBlocked?: BoolFieldUpdateOperationsInput | boolean
     role?: IntFieldUpdateOperationsInput | number
+    ffxivCharacterId?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     sessions?: SessionUpdateManyWithoutUserNestedInput
@@ -17996,6 +18032,7 @@ export namespace Prisma {
     isAdmin?: BoolFieldUpdateOperationsInput | boolean
     isBlocked?: BoolFieldUpdateOperationsInput | boolean
     role?: IntFieldUpdateOperationsInput | number
+    ffxivCharacterId?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     sessions?: SessionUncheckedUpdateManyWithoutUserNestedInput
@@ -18012,6 +18049,7 @@ export namespace Prisma {
     isAdmin?: boolean
     isBlocked?: boolean
     role?: number
+    ffxivCharacterId?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     accounts?: AccountCreateNestedManyWithoutUserInput
@@ -18028,6 +18066,7 @@ export namespace Prisma {
     isAdmin?: boolean
     isBlocked?: boolean
     role?: number
+    ffxivCharacterId?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     accounts?: AccountUncheckedCreateNestedManyWithoutUserInput
@@ -18060,6 +18099,7 @@ export namespace Prisma {
     isAdmin?: BoolFieldUpdateOperationsInput | boolean
     isBlocked?: BoolFieldUpdateOperationsInput | boolean
     role?: IntFieldUpdateOperationsInput | number
+    ffxivCharacterId?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     accounts?: AccountUpdateManyWithoutUserNestedInput
@@ -18076,6 +18116,7 @@ export namespace Prisma {
     isAdmin?: BoolFieldUpdateOperationsInput | boolean
     isBlocked?: BoolFieldUpdateOperationsInput | boolean
     role?: IntFieldUpdateOperationsInput | number
+    ffxivCharacterId?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     accounts?: AccountUncheckedUpdateManyWithoutUserNestedInput

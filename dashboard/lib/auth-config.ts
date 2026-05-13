@@ -242,7 +242,7 @@ export const authConfig = {
           prompt: 'consent',
         },
       },
-      async profile(profile: DiscordProfile, tokens: DiscordTokens) {
+      async profile(profile: DiscordProfile, tokens: any) {
         const opId = `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
         
         authLog.divider(`PROFILE CALLBACK START [${opId}]`);

@@ -142,6 +142,7 @@ exports.Prisma.UserScalarFieldEnum = {
   isAdmin: 'isAdmin',
   isBlocked: 'isBlocked',
   role: 'role',
+  ffxivCharacterId: 'ffxivCharacterId',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 };

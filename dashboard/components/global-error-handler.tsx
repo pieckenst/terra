@@ -21,6 +21,7 @@ type ErrorEvent = {
   code?: string | number;
   severity?: 'error' | 'warning' | 'info';
   error?: Error;
+  silent?: boolean; // If true, don't show toast notifications
 };
 
 type ErrorListener = (event: ErrorEvent) => void;
@@ -32,7 +33,10 @@ const recentErrors = new Map<string, number>();
 const ERROR_DEBOUNCE_MS = 5000; // 5 seconds
 
 const getErrorKey = (event: ErrorEvent): string => {
-  return `${event.message}-${event.code || ''}-${event.severity || 'error'}`;
+  // Include more context to make the key more specific
+  // This prevents different errors with the same message from being deduplicated
+  const detailsKey = event.details ? event.details.substring(0, 50) : '';
+  return `${event.message}-${event.code || ''}-${event.severity || 'error'}-${detailsKey}`;
 };
 
 export const errorBus = {
@@ -50,9 +54,10 @@ export function reportError(
   message: string, 
   details?: string, 
   code?: string | number,
-  severity: 'error' | 'warning' | 'info' = 'error'
+  severity: 'error' | 'warning' | 'info' = 'error',
+  silent: boolean = false
 ) {
-  const event: ErrorEvent = { message, details, code, severity };
+  const event: ErrorEvent = { message, details, code, severity, silent };
   const errorKey = getErrorKey(event);
   const now = Date.now();
   
@@ -63,7 +68,7 @@ export function reportError(
     return; // Skip showing this error
   }
   
-  // Record this error as shown
+  // Record this error as shown (even if silent, to prevent spam)
   recentErrors.set(errorKey, now);
   
   // Clean up old entries periodically
@@ -139,7 +144,7 @@ export class GlobalErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoun
 
 // Hook for handling errors in components
 export function useErrorHandler() {
-  const handleError = (error: unknown, context?: string) => {
+  const handleError = (error: unknown, context?: string, silent: boolean = false) => {
     let message = 'An unexpected error occurred';
     let details: string | undefined;
 
@@ -160,10 +165,10 @@ export function useErrorHandler() {
     }
 
     // Emit to global error bus (this will handle toast debouncing)
-    reportError(message, details, undefined, 'error');
+    reportError(message, details, undefined, 'error', silent);
   };
 
-  const handleApiError = (error: unknown, endpoint?: string) => {
+  const handleApiError = (error: unknown, endpoint?: string, silent: boolean = false) => {
     let message = 'API request failed';
     let code: string | number | undefined;
     let details: string | undefined;
@@ -201,10 +206,10 @@ export function useErrorHandler() {
           }
           
           // Emit to global error bus (this will handle toast debouncing)
-          reportError(message, details, code, severity);
+          reportError(message, details, code, severity, silent);
         }).catch(() => {
           // Emit to global error bus (this will handle toast debouncing)
-          reportError(message, undefined, code, severity);
+          reportError(message, undefined, code, severity, silent);
         });
         return;
       }
@@ -227,7 +232,7 @@ export function useErrorHandler() {
     }
 
     // Emit to global error bus (this will handle toast debouncing)
-    reportError(message, details, code, severity);
+    reportError(message, details, code, severity, silent);
   };
 
   return { handleError, handleApiError };
@@ -271,7 +276,16 @@ export function GlobalErrorHandler({ children }: { children: ReactNode }) {
 
     // Subscribe to programmatic error events
     const unsubscribe = errorBus.subscribe((event) => {
-      const { message, details, severity = 'error' } = event;
+      const { message, details, severity = 'error', silent } = event;
+      
+      // Don't show toast if error is marked as silent
+      if (silent) {
+        // Log to console in development even for silent errors
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[Global Error Handler] Silent ${severity.toUpperCase()}: ${message}`, details || '');
+        }
+        return;
+      }
       
       // Show toast notification (debouncing is handled in reportError)
       switch (severity) {
